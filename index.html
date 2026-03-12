@@ -1675,21 +1675,13 @@
                 return r.emp_id == empId && rd.getFullYear() == y && (rd.getMonth() + 1) == m;
             });
             
-            const totalTrip = records.reduce((s, r) => s + (r.trip_bonus || 0), 0);
-            const totalOt = records.reduce((s, r) => s + (r.ot_total || 0), 0);
-            const totalOther = records.reduce((s, r) => {
-                let oTotal = 0;
-                if(r.other_income) { Object.values(r.other_income).forEach(v => oTotal += (parseFloat(v)||0)); }
-                return s + oTotal;
-            }, 0);
-
-            const combinedTotal = totalTrip + totalOt + totalOther;
+            // ดึงยอด "สุทธิ" (net_total) ของทุกวันในเดือนนั้นมาบวกกัน (หักลบทุกอย่างแล้ว)
+            const combinedTotal = records.reduce((s, r) => s + (r.net_total || 0), 0);
 
             if(combinedTotal > 0) {
                 document.getElementById('c-job-container').innerHTML = '';
-                addContractorJobRow('ค่าจ้างเหมา/ค่าเที่ยว/OT สะสมประจำเดือน', combinedTotal);
+                addContractorJobRow('ยอดสุทธิสะสมประจำเดือน (รวมค่าแรง/หักลบแล้ว)', combinedTotal);
             }
-        }
 
         window.calcWHT = function() { 
             const amount = parseFloat(document.getElementById('c-amount').value) || 0; 
@@ -2173,4 +2165,5 @@
     </script>
 </body>
 </html>
+
 
