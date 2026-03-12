@@ -1,4 +1,4 @@
-// ==========================================
+ก// ==========================================
 // File: PDFService.js
 // ==========================================
 
@@ -122,8 +122,8 @@ export const generatePayslip = async (dataArray) => {
 
             const totalIncome = (parseFloat(data.salary) + parseFloat(data.incentive) + parseFloat(data.other));
             doc.setFontSize(12);
-            doc.text(`รวมรายรับ:`, 20, yPos + 30);
-            doc.text(`${totalIncome.toLocaleString()}`, 90, yPos + 30, { align: "right" });
+            doc.text(`รวมรายรับ:`, 20, yPos + 40);
+            doc.text(`${totalIncome.toLocaleString()}`, 90, yPos + 40, { align: "right" });
 
             // คอลัมน์ขวา (รายหัก)
             doc.text(`ประกันสังคม:`, 110, yPos);
@@ -135,18 +135,22 @@ export const generatePayslip = async (dataArray) => {
             doc.text(`เบิกล่วงหน้า:`, 110, yPos + 16);
             doc.text(`${Number(data.advance).toLocaleString()}`, 190, yPos + 16, { align: "right" });
 
-            doc.text(`ค่าน้ำ/ไฟ:`, 110, yPos + 24);
-            doc.text(`${Number((parseFloat(data.water) + parseFloat(data.electricity))).toLocaleString()}`, 190, yPos + 24, { align: "right" });
+            // เพิ่ม กยศ. ในใบสลิป
+            doc.text(`กยศ.:`, 110, yPos + 24);
+            doc.text(`${Number(data.student_loan || 0).toLocaleString()}`, 190, yPos + 24, { align: "right" });
 
-            const totalDeduct = (parseFloat(data.sso) + parseFloat(data.tax) + parseFloat(data.advance) + parseFloat(data.water) + parseFloat(data.electricity));
-            doc.text(`รวมรายจ่าย:`, 110, yPos + 30);
-            doc.text(`${totalDeduct.toLocaleString()}`, 190, yPos + 30, { align: "right" });
+            doc.text(`ค่าน้ำ/ไฟ:`, 110, yPos + 32);
+            doc.text(`${Number((parseFloat(data.water) + parseFloat(data.electricity))).toLocaleString()}`, 190, yPos + 32, { align: "right" });
+
+            const totalDeduct = (parseFloat(data.sso) + parseFloat(data.tax) + parseFloat(data.advance) + parseFloat(data.student_loan || 0) + parseFloat(data.water) + parseFloat(data.electricity));
+            doc.text(`รวมรายจ่าย:`, 110, yPos + 40);
+            doc.text(`${totalDeduct.toLocaleString()}`, 190, yPos + 40, { align: "right" });
 
             // --- ส่วนสรุปยอดสุทธิ ---
-            doc.line(20, yPos + 38, 190, yPos + 38);
+            doc.line(20, yPos + 48, 190, yPos + 48);
             doc.setFontSize(16);
-            doc.text(`เงินได้สุทธิ (Net Pay):`, 120, yPos + 50);
-            doc.text(`${Number(data.net).toLocaleString()} บาท`, 190, yPos + 50, { align: "right" });
+            doc.text(`เงินได้สุทธิ (Net Pay):`, 120, yPos + 60);
+            doc.text(`${Number(data.net).toLocaleString()} บาท`, 190, yPos + 60, { align: "right" });
             
             // ลบกรอบสี่เหลี่ยมและตัวหนังสือด้านล่างออกทั้งหมด ตามที่ขอ
         });
@@ -182,7 +186,7 @@ export const generateSalarySummary = async (dataArray) => {
         let y = 35;
         // ปรับจำนวนและขนาดคอลัมน์ใหม่ให้มี "ภาษี" และพอดีกับหน้ากระดาษ
         const colW = [10, 10, 10, 20, 35, 25, 16, 16, 12, 18, 12, 12, 12, 10, 10, 18, 18];
-        const headers = ["งวดที่", "เดือน", "ปี", "เลขบัตร/รหัส", "ชื่อ-สกุล", "ตำแหน่ง", "เงินเดือน", "ค่าตอบแทน", "อื่นๆ", "รวมรับ", "สปส.", "ภาษี", "เบิก", "น้ำ", "ไฟ", "รวมหัก", "สุทธิ"];
+        const headers = ["งวดที่", "เดือน", "ปี", "เลขบัตร/รหัส", "ชื่อ-สกุล", "ตำแหน่ง", "เงินเดือน", "ค่าตอบแทน", "อื่นๆ", "รวมรับ", "สปส.", "ภาษี", "เบิก", "กยศ.", "น้ำ/ไฟ", "รวมหัก", "สุทธิ"];
         
         doc.setFontSize(10);
         doc.setDrawColor(0, 0, 0);
@@ -220,6 +224,17 @@ export const generateSalarySummary = async (dataArray) => {
                 let textVal = row[i];
                 if (textVal == null) textVal = "-";
 
+                // หากเป็นช่องน้ำ/ไฟ (รวมกันให้แสดงช่องเดียวใน PDF เพื่อไม่ให้ล้น)
+                if(i === 14) {
+                    textVal = Number(row[14] || 0) + Number(row[15] || 0);
+                } else if(i === 15) {
+                    // ช่องรวมหัก
+                    textVal = row[16];
+                } else if(i === 16) {
+                    // ช่องสุทธิ
+                    textVal = row[17];
+                }
+
                 // แปลงตัวเลขใส่คอมม่าถ้าเป็นคอลัมน์เงิน
                 if (i >= 6 && i <= 16) {
                     let num = parseFloat(String(textVal).replace(/,/g, ''));
@@ -249,14 +264,14 @@ export const generateSalarySummary = async (dataArray) => {
 };
 
 // ==========================================
-// 3. ฟังก์ชันสร้างใบเสร็จรับเงิน (แบบใหม่ ดึง 6 ข้อมูล เรียงบรรทัดลงมา)
+// 3. ฟังก์ชันสร้างใบเสร็จรับเงิน (แบบใหม่ รองรับรายละเอียดได้ 4 บรรทัด และคนนอก)
 // ==========================================
 export const generateReceipt = async (data) => {
     try {
         const doc = initDoc('p');
         
         doc.setFontSize(22);
-        doc.text("ใบเสร็จรับเงิน", 105, 25, { align: "center" });
+        doc.text("ใบเสร็จรับเงิน / ใบสำคัญจ่าย", 105, 25, { align: "center" });
         
         doc.setFontSize(14);
         doc.text(`วันที่    ${new Date(data.date).toLocaleDateString('th-TH')}`, 180, 40, { align: "right" });
@@ -273,17 +288,17 @@ export const generateReceipt = async (data) => {
         const companyTaxId = data.companyTaxId || "";
 
         // --- เริ่มจัด Layout ตามบรรทัด ---
-        // บรรทัด 1: ชื่อพนักงาน
+        // บรรทัด 1: ชื่อพนักงาน / ผู้รับเงิน
         doc.text("ข้าพเจ้า", 25, startY);
         doc.text(empName, 45, startY);
         
-        // บรรทัด 2: ที่อยู่พนักงาน (จัดวางยาวๆ ด้านซ้ายบรรทัดเดียว)
+        // บรรทัด 2: ที่อยู่พนักงาน
         doc.text("ที่อยู่", 25, startY + lineH);
         doc.text(empAddr, 40, startY + lineH); 
         
-        // บรรทัด 3: เลขบัตรประชาชน
-        doc.text("เลขประจำตัวบัตรประชาชน", 25, startY + (lineH * 2));
-        doc.text(empCardId, 75, startY + (lineH * 2));
+        // บรรทัด 3: เลขบัตรประชาชน / เลขที่เสียภาษีคนนอก
+        doc.text("เลขประจำตัวบัตรประชาชน/ผู้เสียภาษี", 25, startY + (lineH * 2));
+        doc.text(empCardId, 95, startY + (lineH * 2));
 
         // บรรทัด 4: ได้รับเงินจากบริษัท (ชื่อบริษัท)
         doc.text("ได้รับเงินจาก บริษัท", 25, startY + (lineH * 3));
@@ -297,7 +312,7 @@ export const generateReceipt = async (data) => {
         doc.text("เลขประจำตัวผู้เสียภาษี", 25, startY + (lineH * 5));
         doc.text(companyTaxId, 70, startY + (lineH * 5));
 
-        // --- ตารางรายการ ---
+        // --- ตารางรายการ (รองรับ 4 แถวตามที่รับเข้ามาจากหน้าเว็บ) ---
         const tableY = startY + (lineH * 6) + 5;
         const col1X = 25;
         const col2X = 145;
@@ -314,23 +329,29 @@ export const generateReceipt = async (data) => {
         for(let i=0; i<4; i++) {
             doc.rect(col1X, currentY, colWidth, rowHeight);
             doc.line(col2X, currentY, col2X, currentY + rowHeight);
-            if(i === 0) {
-                 doc.text(data.job_name || "-", col1X + 2, currentY + 5.5);
-                 doc.text(Number(data.amount).toLocaleString(undefined, {minimumFractionDigits:2}), 182, currentY + 5.5, { align: "right" });
+            
+            // ใช้ข้อมูลจาก job_items ถ้ามี, ถ้าไม่มีหรือเป็นระบบเก่าใช้ข้อมูล job_name ลงช่องแรก
+            if (data.job_items && data.job_items[i]) {
+                doc.text(data.job_items[i].name || "-", col1X + 2, currentY + 5.5);
+                doc.text(Number(data.job_items[i].amount).toLocaleString(undefined, {minimumFractionDigits:2}), 182, currentY + 5.5, { align: "right" });
+            } else if (i === 0 && data.job_name && (!data.job_items || data.job_items.length === 0)) {
+                doc.text(data.job_name || "-", col1X + 2, currentY + 5.5);
+                doc.text(Number(data.amount).toLocaleString(undefined, {minimumFractionDigits:2}), 182, currentY + 5.5, { align: "right" });
             }
+
             currentY += rowHeight;
         }
 
         const totalLabelX = 135;
         const totalValX = 182;
         
-        doc.text("ยอดเงิน", totalLabelX, currentY + 7, { align: "right" });
+        doc.text("ยอดเงินรวม", totalLabelX, currentY + 7, { align: "right" });
         doc.text(Number(data.amount).toLocaleString(undefined, {minimumFractionDigits:2}), totalValX, currentY + 7, { align: "right" });
 
         doc.text(`หักภาษี ณ ที่จ่าย ${data.wht_rate}%`, totalLabelX, currentY + 14, { align: "right" });
         doc.text(Number(data.tax).toLocaleString(undefined, {minimumFractionDigits:2}), totalValX, currentY + 14, { align: "right" });
 
-        doc.text("รวมเงินทั้งสิ้น", totalLabelX, currentY + 21, { align: "right" });
+        doc.text("รวมเงินจ่ายทั้งสิ้น", totalLabelX, currentY + 21, { align: "right" });
         doc.text(Number(data.net).toLocaleString(undefined, {minimumFractionDigits:2}), totalValX, currentY + 21, { align: "right" });
 
         const bahtY = currentY + 21;
@@ -350,7 +371,7 @@ export const generateReceipt = async (data) => {
 
         const signRow1 = signY + 15;
         doc.text("ลงชื่อ......................................................ผู้รับเงิน", 130, signRow1, { align: "center" });
-        doc.text("(......................................................)", 130, signRow1 + 7, { align: "center" });
+        doc.text(`( ${empName} )`, 130, signRow1 + 7, { align: "center" });
 
         const signRow2 = signRow1 + 25;
         doc.text("ลงชื่อ......................................................ผู้จ่ายเงิน", 130, signRow2, { align: "center" });
