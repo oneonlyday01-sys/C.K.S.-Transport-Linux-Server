@@ -1677,11 +1677,17 @@
             
             const totalTrip = records.reduce((s, r) => s + (r.trip_bonus || 0), 0);
             const totalOt = records.reduce((s, r) => s + (r.ot_total || 0), 0);
-            
-            if(totalTrip > 0 || totalOt > 0) {
+            const totalOther = records.reduce((s, r) => {
+                let oTotal = 0;
+                if(r.other_income) { Object.values(r.other_income).forEach(v => oTotal += (parseFloat(v)||0)); }
+                return s + oTotal;
+            }, 0);
+
+            const combinedTotal = totalTrip + totalOt + totalOther;
+
+            if(combinedTotal > 0) {
                 document.getElementById('c-job-container').innerHTML = '';
-                if(totalTrip > 0) addContractorJobRow('ค่าเที่ยวสะสมประจำเดือน', totalTrip);
-                if(totalOt > 0) addContractorJobRow('ค่าล่วงเวลา/OT', totalOt);
+                addContractorJobRow('ค่าจ้างเหมา/ค่าเที่ยว/OT สะสมประจำเดือน', combinedTotal);
             }
         }
 
@@ -2095,11 +2101,11 @@
             const reportTitle = `รายงานสรุปเงินเดือน ประจำเดือน ${monthText} ปี ${yearText} (${periodText})`;
 
             const wsData = [
-                [companyName],           
-                [address],               
-                [taxId],                 
+                [companyName],            
+                [address],                
+                [taxId],                  
                 [],                      
-                [reportTitle],           
+                [reportTitle],            
                 [],                      
                 ['งวด', 'เดือน', 'ปี', 'รหัสพนักงาน', 'ชื่อ-นามสกุล', 'ตำแหน่ง', 'เงินเดือน', 'ค่าตอบแทน', 'รายได้อื่นๆ', 'รวมรับ', 'ประกันสังคม', 'ภาษี', 'เบิกล่วงหน้า', 'กยศ.', 'ค่าน้ำ', 'ค่าไฟ', 'รวมหัก', 'ยอดสุทธิ', 'ธนาคาร']
             ];
