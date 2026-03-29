@@ -581,12 +581,142 @@ export const generateSalarySlipPDF = async (data) => {
     return generatePayslip([data]);
 };
 
+// ==========================================
+// 6. ฟังก์ชันสร้างรายงานสรุปงานรับเหมา (Contractor Report)
+// ==========================================
+export const generateContractorReportPDF = async (dataArray, monthText, yearText) => {
+    try {
+        const doc = initDoc('p'); // ใช้กระดาษแนวตั้ง
+        
+        // --- หัวรายงาน ---
+        doc.setFontSize(18);
+        doc.text("รายงานสรุปงานรับเหมา / จ้างทำของ", 105, 20, { align: "center" });
+        doc.setFontSize(14);
+        doc.text(`ประจำเดือน ${monthText} ปี ${yearText}`, 105, 28, { align: "center" });
+
+        let y = 40;
+        // กำหนดขนาดความกว้างแต่ละคอลัมน์ (รวมกันได้ 180 ให้พอดีหน้ากระดาษ A4 แนวตั้ง: กว้าง 210mm หักขอบซ้ายขวา)
+        const colW = [40, 50, 25, 20, 25, 20]; 
+        const headers = ["ผู้รับเหมา", "งาน", "ค่าจ้าง", "ภาษี", "ยอดสุทธิ", "วันที่"];
+        const startX = 15;
+
+        // --- หัวตาราง ---
+        doc.setFontSize(10);
+        doc.setLineWidth(0.1);
+        let currentX = startX;
+        for(let i=0; i<6; i++) {
+            doc.setFillColor(230, 230, 230); // สีเทาอ่อน
+            doc.rect(currentX, y, colW[i], 10, 'FD');
+            
+            // จัดตำแหน่งตัวหนังสือ (ตัวเลขชิดขวา ข้อความชิดกลาง)
+            let align = (i >= 2 && i <= 4) ? "right" : "center";
+            let xText = (i >= 2 && i <= 4) ? currentX + colW[i] - 2 : currentX + colW[i]/2;
+            
+            doc.text(headers[i], xText, y + 6.5, { align: align });
+            currentX += colW[i];
+        }
+        y += 10;
+
+        let totalAmount = 0, totalTax = 0, totalNet = 0;
+
+        // --- ข้อมูลตาราง ---
+        dataArray.forEach(item => {
+            if (y > 270) {
+                doc.addPage();
+                y = 20;
+                doc.setDrawColor(0, 0, 0);
+                doc.setLineWidth(0.1);
+            }
+
+            currentX = startX;
+            totalAmount += item.amount;
+            totalTax += item.tax;
+            totalNet += item.net;
+
+            // 1. ผู้รับเหมา
+            doc.rect(currentX, y, colW[0], 10, 'S');
+            doc.text(item.name.substring(0, 25), currentX + 2, y + 6.5);
+            currentX += colW[0];
+
+            // 2. งาน
+            doc.rect(currentX, y, colW[1], 10, 'S');
+            doc.text((item.job || "-").substring(0, 35), currentX + 2, y + 6.5);
+            currentX += colW[1];
+
+            // 3. ค่าจ้าง
+            doc.rect(currentX, y, colW[2], 10, 'S');
+            doc.text(item.amount.toLocaleString(undefined, {minimumFractionDigits:2}), currentX + colW[2] - 2, y + 6.5, { align: "right" });
+            currentX += colW[2];
+
+            // 4. ภาษี (ตัวอักษรสีแดง)
+            doc.rect(currentX, y, colW[3], 10, 'S');
+            doc.setTextColor(255, 0, 0);
+            doc.text(item.tax.toLocaleString(undefined, {minimumFractionDigits:2}), currentX + colW[3] - 2, y + 6.5, { align: "right" });
+            doc.setTextColor(0, 0, 0);
+            currentX += colW[3];
+
+            // 5. ยอดสุทธิ (ตัวอักษรสีเขียว)
+            doc.rect(currentX, y, colW[4], 10, 'S');
+            doc.setTextColor(0, 128, 0);
+            doc.text(item.net.toLocaleString(undefined, {minimumFractionDigits:2}), currentX + colW[4] - 2, y + 6.5, { align: "right" });
+            doc.setTextColor(0, 0, 0);
+            currentX += colW[4];
+
+            // 6. วันที่
+            doc.rect(currentX, y, colW[5], 10, 'S');
+            doc.text(item.date, currentX + colW[5]/2, y + 6.5, { align: "center" });
+            currentX += colW[5];
+
+            y += 10;
+        });
+
+        // --- แถวสรุปยอดรวม ---
+        currentX = startX;
+        doc.setFillColor(245, 245, 245);
+        
+        // ผสานคอลัมน์ 1 และ 2 สำหรับข้อความ "รวมทั้งหมด"
+        doc.rect(currentX, y, colW[0] + colW[1], 10, 'FD');
+        doc.setFont(fontName, "bold"); 
+        doc.text(`รวมทั้งหมด ${dataArray.length} รายการ`, currentX + colW[0] + colW[1] - 5, y + 6.5, { align: "right" });
+        doc.setFont(fontName, fontStyle); // คืนค่าฟอนต์ปกติ
+        currentX += colW[0] + colW[1];
+
+        // รวมค่าจ้าง
+        doc.rect(currentX, y, colW[2], 10, 'FD');
+        doc.text(totalAmount.toLocaleString(undefined, {minimumFractionDigits:2}), currentX + colW[2] - 2, y + 6.5, { align: "right" });
+        currentX += colW[2];
+
+        // รวมภาษี (สีแดง)
+        doc.rect(currentX, y, colW[3], 10, 'FD');
+        doc.setTextColor(255, 0, 0);
+        doc.text(totalTax.toLocaleString(undefined, {minimumFractionDigits:2}), currentX + colW[3] - 2, y + 6.5, { align: "right" });
+        doc.setTextColor(0, 0, 0);
+        currentX += colW[3];
+
+        // รวมสุทธิ (สีเขียว)
+        doc.rect(currentX, y, colW[4], 10, 'FD');
+        doc.setTextColor(0, 128, 0);
+        doc.text(totalNet.toLocaleString(undefined, {minimumFractionDigits:2}), currentX + colW[4] - 2, y + 6.5, { align: "right" });
+        doc.setTextColor(0, 0, 0);
+        currentX += colW[4];
+
+        // ช่องวันที่ว่างเปล่า
+        doc.rect(currentX, y, colW[5], 10, 'FD');
+
+        // บันทึกไฟล์
+        doc.save(`Contractor_Report_${yearText}_${monthText}.pdf`);
+    } catch (error) {
+        console.error(error);
+        alert("เกิดข้อผิดพลาดในการสร้าง PDF: " + error.message);
+    }
+};
+
 export default {
     generatePayslip,
     generateSalarySummary,
     generateReceipt,
     generateTripReport,
     generateLedger,
-    generateSalarySlipPDF
+    generateSalarySlipPDF,
+    generateContractorReportPDF // <--- เพิ่มตัว Export ใหม่ที่นี่
 };
-
