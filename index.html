@@ -33,7 +33,7 @@
         .page { display: none; opacity: 0; transform: translateY(10px); transition: all 0.3s ease-out; }
         .page.active { display: block; opacity: 1; transform: translateY(0); }
         .form-control { width: 100%; height: 48px; padding: 0 16px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; transition: all 0.2s; font-size: 0.95rem; }
-        .form-control:focus { outline: none; border-color: #0ea5e9; ring: 2px solid rgba(14, 165, 233, 0.2); }
+        .form-control:focus { outline: none; border-color: #0ea5e9; box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2); }
         .card { background: white; border-radius: 16px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); border: 1px solid #f1f5f9; padding: 24px; }
         @media (max-width: 768px) { .form-control { height: 52px; font-size: 16px; } .card { padding: 16px; } }
         .shift-radio:checked + div { background-color: #f0f9ff; border-color: #0ea5e9; color: #0284c7; }
@@ -58,7 +58,7 @@
             <div class="mb-6"><div class="w-16 h-16 bg-blue-600 rounded-xl mx-auto flex items-center justify-center text-white text-2xl shadow-lg"><i class="fa-solid fa-lock"></i></div></div>
             <h2 class="text-2xl font-bold text-slate-800 mb-2">C.K.S. Transport</h2>
             <p class="text-slate-500 mb-6 text-sm">กรุณากรอกรหัสผ่านทีมเพื่อเข้าใช้งาน</p>
-            <input type="password" id="team-pin" class="form-control text-center text-2xl tracking-widest font-bold mb-4" placeholder="••••" maxlength="4" inputmode="numeric">
+            <input type="password" id="team-pin" class="form-control text-center text-2xl tracking-widest font-bold mb-4" placeholder="••••" maxlength="4" inputmode="numeric" onkeydown="if(event.key==='Enter')window.checkPin()">
             <button onclick="window.checkPin()" class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition">เข้าใช้งาน</button>
             <p id="login-error" class="text-red-500 text-xs mt-3 hidden">รหัสผ่านไม่ถูกต้อง</p>
         </div>
@@ -109,8 +109,8 @@
                     <div class="card border-l-4 border-l-green-500 flex items-center justify-between"><div><p class="text-slate-500 text-sm font-medium mb-1">ยอดจ่ายเดือนล่าสุด</p><h3 class="text-3xl font-bold text-green-600" id="dash-last-month">0</h3></div><div class="w-12 h-12 bg-green-50 text-green-500 rounded-2xl flex items-center justify-center text-xl"><i class="fa-solid fa-money-bill-wave"></i></div></div>
                 </div>
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                     <div class="card h-80"><h3 class="font-bold text-lg mb-4 text-slate-700">สัดส่วนพนักงาน</h3><div class="relative h-full w-full flex justify-center"><canvas id="empChart"></canvas></div></div>
-                     <div class="card h-80"><h3 class="font-bold text-lg mb-4 text-slate-700">แนวโน้มการจ่ายเงิน</h3><div class="relative h-full w-full"><canvas id="salaryChart"></canvas></div></div>
+                     <div class="card h-80 overflow-hidden"><h3 class="font-bold text-lg mb-4 text-slate-700">สัดส่วนพนักงาน</h3><div class="relative h-52 w-full flex justify-center"><canvas id="empChart"></canvas></div></div>
+                     <div class="card h-80 overflow-hidden"><h3 class="font-bold text-lg mb-4 text-slate-700">แนวโน้มการจ่ายเงิน</h3><div class="relative h-52 w-full"><canvas id="salaryChart"></canvas></div></div>
                 </div>
             </div>
 
@@ -702,11 +702,13 @@
             try {
                 const res = await fetch(`${API_BASE}${endpoint}`, options);
                 if (!res.ok) {
-                    const errorText = await res.text();
-                    throw new Error(errorText || 'API Error');
+                    let errorMsg = 'API Error';
+                    try { const errData = await res.json(); errorMsg = errData.error || errorMsg; } 
+                    catch(e) { errorMsg = await res.text() || errorMsg; }
+                    throw new Error(errorMsg);
                 }
-                // ถ้าเป็น GET ให้แปลงกลับมาเป็น JSON, ถ้าไม่ใช่ส่งกลับไปเป็น Text ธรรมดา
-                return method === 'GET' ? await res.json() : await res.text();
+                // ใช้ json() ทุก method เพื่อ consistency (Backend ตอบ JSON เสมอ)
+                return await res.json();
             } catch (e) {
                 console.error(`API_ERROR [${method} ${endpoint}]:`, e);
                 throw e; // โยน Error ไปให้ตัวที่เรียกจัดการ
@@ -930,7 +932,16 @@
         };
 
         window.printLedgerReport = () => { if(!appState.ledgerSummary || !appState.filteredLedger) return; PDFService.generateLedger(appState.ledgerSummary, appState.filteredLedger); };
-        window.exportToPDF = () => { /* ... array mapping same as before ... */ };
+        window.exportToPDF = () => {
+            if(!filteredReportData || filteredReportData.length === 0) return Swal.fire('ไม่มีข้อมูล', 'กรุณากดค้นหาก่อน', 'warning');
+            const monthNames = ["", "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+            const dataForPdf = filteredReportData.map(h => {
+                const income = h.salary + h.incentive + h.other;
+                const deduct = h.sso + h.tax + h.advance + (h.student_loan||0) + h.water + h.electricity;
+                return [h.period, monthNames[h.month] || h.month, h.year, h.emp_id, h.name, h.pos, h.salary, h.incentive, h.other, income, h.sso, h.tax, h.advance, (h.student_loan||0), h.water, h.electricity, deduct, h.net];
+            });
+            PDFService.generateSalarySummary(dataForPdf);
+        };
 
         window.toggleSidebar = function() { document.getElementById('sidebar').classList.toggle('-translate-x-full'); document.getElementById('sidebar-overlay').classList.toggle('hidden'); }
         window.nav = function(pageId) { 
@@ -1032,7 +1043,7 @@
             document.getElementById('d-trip-bonus').value = bonus; 
             let other = 0; const otherData = getOtherIncomes(); for(let k in otherData) other += otherData[k];
             const ded = v('d-deduct-advance') + v('d-deduct-absence'); const net = v('d-wage') + ot + bonus + other - ded; 
-            document.getElementById('sum-wage').innerText = v('d-wage').toLocaleString(); document.getElementById('sum-ot-hours').innerText = v('d-ot-hours').toString(); document.getElementById('sum-ot').innerText = ot.toLocaleString(); document.getElementById('sum-trip-count').innerText = trips.toString(); document.getElementById('sum-trip-bonus').innerText = bonus.toLocaleString(); document.getElementById('sum-other').innerText = other.toLocaleString(); document.getElementById('sum-deduct').innerText = ded.toLocaleString(); document.getElementById('d-net-total').innerText = net.toLocaleString(undefined, {minimumFractionDigits: 2}); 
+            document.getElementById('sum-wage').innerText = v('d-wage').toLocaleString(); document.getElementById('sum-ot-hours').innerText = v('d-ot-hours').toString(); document.getElementById('sum-ot').innerText = ot.toLocaleString(); document.getElementById('sum-trip-count').innerText = trips.toString(); document.getElementById('sum-trip-bonus').innerText = bonus.toLocaleString(); document.getElementById('sum-other').innerText = other.toLocaleString(); document.getElementById('sum-deduct').innerText = ded.toLocaleString(); document.getElementById('d-net-total').innerText = net.toLocaleString(undefined, {minimumFractionDigits: 2}); document.getElementById('d-net-total').dataset.raw = net; 
         }
 
         window.saveDaily = async function() { 
@@ -1045,7 +1056,7 @@
                 id: document.getElementById('d-record-id').value || 'REC-' + Date.now(), 
                 date: document.getElementById('d-date').value, 
                 emp_id: empId, name: `${emp.fname} ${emp.lname}`, shift: shift, 
-                wage: parseFloat(document.getElementById('d-wage').value) || 0, ot_hours: parseFloat(document.getElementById('d-ot-hours').value) || 0, ot_rate: parseFloat(document.getElementById('d-ot-rate').value) || 0, ot_total: parseFloat(document.getElementById('d-ot-total').value) || 0, trip_count: parseFloat(document.getElementById('d-trip-count').value) || 0, trip_threshold: parseFloat(document.getElementById('d-trip-threshold').value) || 0, trip_rate: parseFloat(document.getElementById('d-trip-rate').value) || 0, trip_bonus: parseFloat(document.getElementById('d-trip-bonus').value) || 0, other_income: other, deduct_advance: parseFloat(document.getElementById('d-deduct-advance').value) || 0, deduct_absence: parseFloat(document.getElementById('d-deduct-absence').value) || 0, net_total: parseFloat(document.getElementById('d-net-total').innerText.replace(/,/g, '')), remarks: document.getElementById('d-remarks').value 
+                wage: parseFloat(document.getElementById('d-wage').value) || 0, ot_hours: parseFloat(document.getElementById('d-ot-hours').value) || 0, ot_rate: parseFloat(document.getElementById('d-ot-rate').value) || 0, ot_total: parseFloat(document.getElementById('d-ot-total').value) || 0, trip_count: parseFloat(document.getElementById('d-trip-count').value) || 0, trip_threshold: parseFloat(document.getElementById('d-trip-threshold').value) || 0, trip_rate: parseFloat(document.getElementById('d-trip-rate').value) || 0, trip_bonus: parseFloat(document.getElementById('d-trip-bonus').value) || 0, other_income: other, deduct_advance: parseFloat(document.getElementById('d-deduct-advance').value) || 0, deduct_absence: parseFloat(document.getElementById('d-deduct-absence').value) || 0, net_total: parseFloat(document.getElementById('d-net-total').dataset.raw) || 0, remarks: document.getElementById('d-remarks').value 
             }; 
             
             try {
@@ -1143,14 +1154,14 @@
             document.getElementById('emp-list').innerHTML = list.map((e, i) => `<tr class="hover:bg-slate-50 transition"><td class="p-4 font-mono text-xs text-slate-500">${e.id}</td><td class="p-4 font-bold text-slate-700">${e.prefix} ${e.fname} ${e.lname}</td><td class="p-4 text-xs"><span class="px-2 py-1 rounded ${e.type==='Contractor'?'bg-orange-100 text-orange-700':'bg-blue-100 text-blue-700'}">${e.type==='Contractor'?'รับเหมา':'ประจำ'}</span></td><td class="p-4 text-slate-600">${e.pos}</td><td class="p-4 text-right font-mono text-slate-700">${e.salary.toLocaleString()}</td><td class="p-4 text-center"><span class="px-2 py-1 rounded-full text-xs font-bold ${e.status=='Active'?'bg-green-100 text-green-700':'bg-red-100 text-red-700'}">${e.status=='Active'?'ปกติ':'ลาออก'}</span></td><td class="p-4 text-center"><button onclick="viewEmp('${e.id}')" class="text-slate-500 hover:text-slate-700 mx-1"><i class="fa-solid fa-eye"></i></button><button onclick="editEmp('${e.id}')" class="text-blue-500 hover:text-blue-700 mx-1"><i class="fa-solid fa-pen-to-square"></i></button><button onclick="delEmp('${e.id}')" class="text-red-400 hover:text-red-600 mx-1"><i class="fa-solid fa-trash-can"></i></button></td></tr>`).join(''); 
         }
 
-        window.openAddEmpModal = function() { document.getElementById('empModal').classList.remove('hidden'); document.getElementById('e-edit-mode').value = 'false'; document.getElementById('e-id').value = ''; document.getElementById('e-fname').value = ''; document.getElementById('e-lname').value = ''; document.getElementById('e-salary').value = ''; document.getElementById('e-address').value = ''; toggleResignInput(); }
+        window.openAddEmpModal = function() { document.getElementById('empModal').classList.remove('hidden'); document.getElementById('e-edit-mode').value = 'false'; document.getElementById('e-id').value = ''; document.getElementById('e-prefix').value = 'นาย'; document.getElementById('e-fname').value = ''; document.getElementById('e-lname').value = ''; document.getElementById('e-pos').value = ''; document.getElementById('e-salary').value = ''; document.getElementById('e-bank').value = ''; document.getElementById('e-start').value = ''; document.getElementById('e-status').value = 'Active'; document.getElementById('e-resign').value = ''; document.getElementById('e-address').value = ''; document.querySelector('input[name="e-type"][value="Monthly"]').checked = true; toggleResignInput(); }
         window.editEmp = function(id) { const e = appState.employees.find(x => x.id == id); document.getElementById('empModal').classList.remove('hidden'); document.getElementById('e-edit-mode').value = 'true'; document.getElementById('e-id').value = e.id; document.getElementById('e-prefix').value = e.prefix; document.getElementById('e-fname').value = e.fname; document.getElementById('e-lname').value = e.lname; document.getElementById('e-pos').value = e.pos; document.getElementById('e-salary').value = e.salary; document.getElementById('e-bank').value = e.bank; document.getElementById('e-start').value = e.start_date; document.getElementById('e-status').value = e.status; document.getElementById('e-resign').value = e.resign_date || ''; document.getElementById('e-address').value = e.address || ''; const radios = document.getElementsByName('e-type'); for(let r of radios) r.checked = (r.value === (e.type || 'Monthly')); toggleResignInput(); }
 
         window.handleEmpSubmit = async function(e) { 
             e.preventDefault(); 
             const type = document.querySelector('input[name="e-type"]:checked').value; 
             const d = { 
-                id: document.getElementById('e-id').value, prefix: document.getElementById('e-prefix').value, fname: document.getElementById('e-fname').value, lname: document.getElementById('e-lname').value, pos: document.getElementById('e-pos').value, salary: parseFloat(document.getElementById('e-salary').value) || 0, bank: document.getElementById('e-bank').value, status: document.getElementById('e-status').value, start_date: document.getElementById('e-start').value, resign_date: document.getElementById('e-resign').value, gender: '-', type: type, address: document.getElementById('e-address').value 
+                id: document.getElementById('e-id').value, prefix: document.getElementById('e-prefix').value, fname: document.getElementById('e-fname').value, lname: document.getElementById('e-lname').value, pos: document.getElementById('e-pos').value, salary: parseFloat(document.getElementById('e-salary').value) || 0, bank: document.getElementById('e-bank').value, status: document.getElementById('e-status').value, start_date: document.getElementById('e-start').value, resign_date: document.getElementById('e-resign').value, gender: document.getElementById('e-prefix').value === 'นาย' ? 'M' : 'F', type: type, address: document.getElementById('e-address').value 
             }; 
             
             try {
@@ -1206,7 +1217,7 @@
             const emp = appState.employees.find(e => e.id == empId); 
             if(emp) posDisp.innerText = `ตำแหน่ง: ${emp.pos} | ฐานเงินเดือน: ${emp.salary.toLocaleString()}`; btn.disabled = false; 
             const month = parseInt(document.getElementById('pay-month').value); const year = parseInt(document.getElementById('pay-year').value); const period = parseInt(document.getElementById('pay-period').value); 
-            let dStart = 1, dEnd = 15; if(period === 2) { dStart = 16; dEnd = 31; } 
+            let dStart = 1, dEnd = 15; if(period === 2) { dStart = 16; dEnd = new Date(year, month, 0).getDate(); } 
             const records = appState.dailyRecords.filter(r => { const d = new Date(r.date); return r.emp_id == empId && d.getFullYear() == year && (d.getMonth()+1) == month && d.getDate() >= dStart && d.getDate() <= dEnd; }); 
             let salary = emp.salary / 2; 
             const ot = records.reduce((s,r) => s + (r.ot_total||0), 0); const bonus = records.reduce((s,r) => s + (r.trip_bonus||0), 0); 
@@ -1232,8 +1243,13 @@
         window.savePayroll = function() { 
             const empId = document.getElementById('inp-p-employee').value; if(!empId) return; 
             const emp = appState.employees.find(e => e.id == empId); 
+            const period = parseInt(document.getElementById('pay-period').value); const month = parseInt(document.getElementById('pay-month').value); const year = parseInt(document.getElementById('pay-year').value);
+            const dupInTemp = appState.payrollTemp.find(t => t.emp_id == empId && t.period === period && t.month === month && t.year === year);
+            const dupInHistory = appState.history.find(t => t.emp_id == empId && t.period === period && t.month === month && t.year === year);
+            if(dupInTemp) return Swal.fire('ซ้ำ!', 'พนักงานคนนี้มีอยู่ในตารางรอบันทึกแล้ว (งวดเดียวกัน)', 'warning');
+            if(dupInHistory) return Swal.fire('ซ้ำ!', 'พนักงานคนนี้มีข้อมูลในระบบแล้ว (งวดเดียวกัน)', 'warning');
             const data = { 
-                emp_id: empId, name: `${emp.prefix}${emp.fname} ${emp.lname}`, pos: emp.pos, salary: parseFloat(document.getElementById('inp-p-salary').value)||0, incentive: parseFloat(document.getElementById('inp-p-incentive').value)||0, other: parseFloat(document.getElementById('inp-p-other').value)||0, sso: parseFloat(document.getElementById('inp-p-sso').value)||0, tax: parseFloat(document.getElementById('inp-p-tax').value)||0, advance: parseFloat(document.getElementById('inp-p-advance').value)||0, student_loan: parseFloat(document.getElementById('inp-p-student-loan').value)||0, water: parseFloat(document.getElementById('inp-p-water').value)||0, electricity: parseFloat(document.getElementById('inp-p-electricity').value)||0, net: parseFloat(document.getElementById('disp-p-net').innerText.replace(/,/g, '')), bank: emp.bank, period: parseInt(document.getElementById('pay-period').value), month: parseInt(document.getElementById('pay-month').value), year: parseInt(document.getElementById('pay-year').value) 
+                id: 'PAY-' + Date.now(), emp_id: empId, name: `${emp.prefix}${emp.fname} ${emp.lname}`, pos: emp.pos, salary: parseFloat(document.getElementById('inp-p-salary').value)||0, incentive: parseFloat(document.getElementById('inp-p-incentive').value)||0, other: parseFloat(document.getElementById('inp-p-other').value)||0, sso: parseFloat(document.getElementById('inp-p-sso').value)||0, tax: parseFloat(document.getElementById('inp-p-tax').value)||0, advance: parseFloat(document.getElementById('inp-p-advance').value)||0, student_loan: parseFloat(document.getElementById('inp-p-student-loan').value)||0, water: parseFloat(document.getElementById('inp-p-water').value)||0, electricity: parseFloat(document.getElementById('inp-p-electricity').value)||0, net: parseFloat(document.getElementById('disp-p-net').innerText.replace(/,/g, '')), bank: emp.bank, period: period, month: month, year: year 
             }; 
             appState.payrollTemp.push(data); resetPayrollForm(true); renderPayrollTempTable(); Swal.fire({icon: 'success', title: 'เพิ่มรายการแล้ว', text: 'ข้อมูลอยู่ในตารางด้านล่าง กด "บันทึกเข้าระบบทั้งหมด" เพื่อยืนยัน', timer: 1500, showConfirmButton: false}); 
         }
@@ -1387,9 +1403,9 @@
         }
 
         // --- REPORTS & SETTINGS ---
-        window.switchReportTab = function(tab, btn) { document.querySelectorAll('.rpt-tab-content').forEach(e => e.classList.add('hidden')); document.getElementById(`rpt-tab-${tab}`).classList.remove('hidden'); document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active')); if(btn) btn.classList.add('active'); if(tab === 'contractor') { initYearSelect('rpt-c-year'); initMonthSelect('rpt-c-month'); } else if(tab === 'ledger') { initYearSelect('rpt-l-year'); initMonthSelect('rpt-l-month'); } else if(tab === 'trip') { initYearSelect('rpt-t-year'); initMonthSelect('rpt-t-month'); } }
+        window.switchReportTab = function(tab, btn) { document.querySelectorAll('.rpt-tab-content').forEach(e => e.classList.add('hidden')); document.getElementById(`rpt-tab-${tab}`).classList.remove('hidden'); if(btn) { btn.parentElement.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); } if(tab === 'contractor') { initYearSelect('rpt-c-year'); initMonthSelect('rpt-c-month'); } else if(tab === 'ledger') { initYearSelect('rpt-l-year'); initMonthSelect('rpt-l-month'); } else if(tab === 'trip') { initYearSelect('rpt-t-year'); initMonthSelect('rpt-t-month'); } }
         window.initYearSelect = function(id) { const el = document.getElementById(id); if(el.options.length < 2) { const y = new Date().getFullYear(); el.innerHTML = `<option value="${y}">${y}</option><option value="${y-1}">${y-1}</option>`; } }
-        window.initMonthSelect = function(id) { const el = document.getElementById(id); if(el.options.length < 2) { const mArr = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."]; if(id==='rpt-l-month') el.innerHTML = '<option value="all">-- ทั้งปี --</option>'; else el.innerHTML = ''; mArr.forEach((m,i) => el.innerHTML += `<option value="${i+1}">${m}</option>`); } }
+        window.initMonthSelect = function(id) { const el = document.getElementById(id); if(el.options.length < 2) { const curMonth = new Date().getMonth() + 1; const mArr = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."]; if(id==='rpt-l-month') el.innerHTML = '<option value="all">-- ทั้งปี --</option>'; else el.innerHTML = ''; mArr.forEach((m,i) => el.innerHTML += `<option value="${i+1}" ${i+1===curMonth?'selected':''}>${m}</option>`); } }
         window.filterReport = function() { 
             const m = parseInt(document.getElementById('rpt-month').value); const y = parseInt(document.getElementById('rpt-year').value); const p = document.getElementById('rpt-period').value; 
             filteredReportData = appState.history.filter(h => h.month === m && h.year === y && (p === 'all' || h.period == p)); 
