@@ -530,6 +530,7 @@
                                     <th colspan="4" style="background-color: #f0fdf4;">รายรับ</th>
                                     <th colspan="7" style="background-color: #fef2f2;">รายหัก</th>
                                     <th rowspan="2">สุทธิ</th>
+                                    <th rowspan="2" class="w-12 text-center text-xs">จัดการ</th>
                                 </tr>
                                 <tr>
                                     <th>รหัส</th>
@@ -730,6 +731,16 @@
         window.selectedDailyEmpId = null;
         window.filteredContractorData = [];
 
+        // Helper: แปลง other_income ที่อาจเป็น string จาก DB ให้เป็น object เสมอ
+        window.safeParseOtherIncome = function(val) {
+            if (!val) return {};
+            if (typeof val === 'object' && !Array.isArray(val)) return val;
+            if (typeof val === 'string') {
+                try { return JSON.parse(val); } catch(e) { return {}; }
+            }
+            return {};
+        };
+
         // ============================================================
         // 3. INITIALIZATION & LOGIN
         // ============================================================
@@ -854,7 +865,7 @@
             } else {
                 records.forEach(r => {
                     let otherSum = 0;
-                    if(r.other_income) Object.values(r.other_income).forEach(v => otherSum += (parseFloat(v)||0));
+                    Object.values(safeParseOtherIncome(r.other_income)).forEach(v => otherSum += (parseFloat(v)||0));
                     let ded = r.deduct_advance + r.deduct_absence;
 
                     sumW += r.wage; sumOtHours += (r.ot_hours || 0); sumOt += r.ot_total; sumTripCount += (r.trip_count || 0); sumTripBonus += (r.trip_bonus || 0); sumOtherOnly += otherSum; sumDed += ded; sumNet += r.net_total;
@@ -972,8 +983,8 @@
 
         window.renderCharts = function() { 
             if(empChart) empChart.destroy(); 
-            const m = appState.employees.filter(e => e.prefix==='นาย'&&e.status!=='Resigned').length; 
-            const f = appState.employees.filter(e => e.prefix!=='นาย'&&e.status!=='Resigned').length; 
+            const m = appState.employees.filter(e => e.gender==='M'&&e.status!=='Resigned').length; 
+            const f = appState.employees.filter(e => e.gender!=='M'&&e.status!=='Resigned').length; 
             empChart = new Chart(document.getElementById('empChart').getContext('2d'), { 
                 type: 'doughnut', data: { labels: ['ชาย', 'หญิง'], datasets: [{ data: [m, f], backgroundColor: ['#3b82f6', '#ec4899'], borderWidth: 0 }] }, 
                 options: { maintainAspectRatio: false, cutout: '70%', plugins: { legend: { position: 'bottom' } } } 
@@ -1079,7 +1090,7 @@
             const tbody = document.getElementById('daily-list');
             if(list.length) {
                 tbody.innerHTML = list.map(r => {
-                    let otherSum = 0; if(r.other_income) Object.values(r.other_income).forEach(v => otherSum += (parseFloat(v)||0));
+                    let otherSum = 0; Object.values(safeParseOtherIncome(r.other_income)).forEach(v => otherSum += (parseFloat(v)||0));
                     return `<tr class="hover:bg-slate-50 transition border-b border-slate-100">
                         <td class="p-4 font-bold text-slate-700">${r.name}</td><td class="p-4 text-center"><span class="px-2 py-1 rounded text-[10px] ${r.shift === 'Day' ? 'bg-orange-100 text-orange-600' : 'bg-indigo-100 text-indigo-600'}">${r.shift === 'Day' ? 'กลางวัน' : 'กลางคืน'}</span></td><td class="p-4 text-right">${r.wage.toLocaleString()}</td><td class="p-4 text-center text-orange-500 font-medium">${r.ot_hours || 0}</td><td class="p-4 text-right text-orange-600">${r.ot_total.toLocaleString()}</td><td class="p-4 text-center text-indigo-600 font-medium">${r.trip_count || 0}</td><td class="p-4 text-right text-purple-600">${(r.trip_bonus || 0).toLocaleString()}</td><td class="p-4 text-right text-pink-600">${otherSum.toLocaleString()}</td><td class="p-4 text-right text-red-500">${(r.deduct_advance + r.deduct_absence).toLocaleString()}</td><td class="p-4 text-right font-bold text-blue-600">${r.net_total.toLocaleString()}</td>
                         <td class="p-4 text-center whitespace-nowrap"><button onclick="viewDaily('${r.id}')" class="w-7 h-7 inline-flex items-center justify-center rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 mx-0.5"><i class="fa-solid fa-eye text-xs"></i></button><button onclick="selectDailyEmpFromList('${r.emp_id}');" class="w-7 h-7 inline-flex items-center justify-center rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 mx-0.5"><i class="fa-solid fa-pen text-xs"></i></button><button onclick="deleteDaily('${r.id}')" class="w-7 h-7 inline-flex items-center justify-center rounded-full bg-red-50 text-red-600 hover:bg-red-100 mx-0.5"><i class="fa-solid fa-trash text-xs"></i></button></td>
@@ -1090,8 +1101,8 @@
         }
 
         window.viewDaily = function(id) { 
-            const r = appState.dailyRecords.find(d => d.id === id); if(!r) return; 
-            const other = r.other_income || {}; const otherText = Object.entries(other).map(([k,v]) => `<div class="flex justify-between"><span>${k}</span><span>${v}</span></div>`).join('') || '-'; 
+            const r = appState.dailyRecords.find(d => d.id === id); if(!r) return; const other = safeParseOtherIncome(r.other_income);
+            const otherText = Object.entries(other).map(([k,v]) => `<div class="flex justify-between"><span>${k}</span><span>${v}</span></div>`).join('') || '-'; 
             const thresh = parseFloat(r.trip_threshold) || 0; const extra = thresh > 0 && r.trip_count > thresh ? r.trip_count - thresh : 0;
             const tripDetail = `โบนัสเที่ยว (${r.trip_count} เที่ยว) ${extra > 0 ? `<span class='text-[10px] text-purple-600 font-bold'>(เกินเกณฑ์ ${extra})</span>` : ''}`;
             Swal.fire({ title: r.name, html: `<div class="text-sm text-left space-y-2"><div class="flex justify-between border-b pb-1"><span>กะ</span><span class="font-bold">${r.shift === 'Day' ? 'กลางวัน' : 'กลางคืน'}</span></div><div class="flex justify-between border-b pb-1"><span>ค่าแรง</span><span>${r.wage.toLocaleString()}</span></div><div class="flex justify-between border-b pb-1"><span>OT (${r.ot_hours} ชม.)</span><span>${r.ot_total.toLocaleString()}</span></div><div class="flex justify-between border-b pb-1"><span>${tripDetail}</span><span>${r.trip_bonus.toLocaleString()}</span></div><div class="bg-slate-50 p-2 rounded"><b>รายได้อื่นๆ:</b>${otherText}</div><div class="flex justify-between text-red-600"><span>หัก (เบิก/ขาด)</span><span>${(r.deduct_advance + r.deduct_absence).toLocaleString()}</span></div><div class="mt-2 text-slate-500 italic text-xs">หมายเหตุ: ${r.remarks || '-'}</div><div class="text-right text-xl font-bold mt-4 text-blue-600">สุทธิ: ${r.net_total.toLocaleString()}</div></div>`, confirmButtonText: 'ปิด', confirmButtonColor: '#64748b' }); 
@@ -1127,7 +1138,7 @@
                 if(exist) { 
                     document.getElementById('d-record-id').value = exist.id; document.getElementById('d-wage').value = exist.wage; document.getElementById('d-remarks').value = exist.remarks || ''; document.getElementById('d-ot-hours').value = exist.ot_hours; document.getElementById('d-ot-rate').value = exist.ot_rate; document.getElementById('d-trip-count').value = exist.trip_count; document.getElementById('d-trip-threshold').value = exist.trip_threshold !== undefined ? exist.trip_threshold : 0; document.getElementById('d-trip-rate').value = exist.trip_rate; document.getElementById('d-deduct-advance').value = exist.deduct_advance; document.getElementById('d-deduct-absence').value = exist.deduct_absence; 
                     const shifts = document.getElementsByName('d-shift'); shifts.forEach(s => s.checked = (s.value === (exist.shift || 'Day'))); 
-                    renderOtherIncomesData(exist.other_income || {});
+                    renderOtherIncomesData(safeParseOtherIncome(exist.other_income));
                 } else { resetDailyForm(false); document.getElementById('d-record-id').value = ''; } 
                 calcDaily(); 
             } catch(e) { console.error(e); } 
@@ -1144,7 +1155,7 @@
         window.filterEmpTable = function(type, btn) { currentEmpFilter = type; if(btn) { document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); } renderEmpTable(type); }
         window.renderEmpTable = function(filter) { 
             const list = appState.employees.filter(e => filter === 'All' ? true : e.type === filter); 
-            const count = (arr, type, gender) => arr.filter(e => (type==='All' || e.type===type) && (gender==='All' || (gender==='M' ? e.prefix==='นาย' : e.prefix!=='นาย'))).length; 
+            const count = (arr, type, gender) => arr.filter(e => (type==='All' || e.type===type) && (gender==='All' || e.gender===gender)).length; 
             const all = appState.employees.filter(e => e.status !== 'Resigned'); 
             
             document.getElementById('estat-total').innerText = all.length; document.getElementById('estat-total-m').innerText = count(all, 'All', 'M'); document.getElementById('estat-total-f').innerText = count(all, 'All', 'F'); 
@@ -1161,9 +1172,13 @@
             e.preventDefault(); 
             const type = document.querySelector('input[name="e-type"]:checked').value; 
             const d = { 
-                id: document.getElementById('e-id').value, prefix: document.getElementById('e-prefix').value, fname: document.getElementById('e-fname').value, lname: document.getElementById('e-lname').value, pos: document.getElementById('e-pos').value, salary: parseFloat(document.getElementById('e-salary').value) || 0, bank: document.getElementById('e-bank').value, status: document.getElementById('e-status').value, start_date: document.getElementById('e-start').value, resign_date: document.getElementById('e-resign').value, gender: document.getElementById('e-prefix').value === 'นาย' ? 'M' : 'F', type: type, address: document.getElementById('e-address').value 
+                id: document.getElementById('e-id').value.trim(), prefix: document.getElementById('e-prefix').value, fname: document.getElementById('e-fname').value.trim(), lname: document.getElementById('e-lname').value.trim(), pos: document.getElementById('e-pos').value.trim(), salary: parseFloat(document.getElementById('e-salary').value) || 0, bank: document.getElementById('e-bank').value.trim(), status: document.getElementById('e-status').value, start_date: document.getElementById('e-start').value, resign_date: document.getElementById('e-resign').value, gender: document.getElementById('e-prefix').value === 'นาย' ? 'M' : 'F', type: type, address: document.getElementById('e-address').value.trim() 
             }; 
             
+            if (!d.id || d.id.length !== 13) return Swal.fire('ข้อมูลไม่ถูกต้อง', 'กรุณาระบุเลขประจำตัวประชาชน 13 หลัก', 'warning');
+            if (!d.fname || !d.lname) return Swal.fire('ข้อมูลไม่ถูกต้อง', 'กรุณาระบุชื่อและนามสกุล', 'warning');
+            if (d.salary < 0) return Swal.fire('ข้อมูลไม่ถูกต้อง', 'เงินเดือนไม่สามารถติดลบได้', 'warning');
+
             try {
                 // *** เปลี่ยนมายิง Master API ***
                 await apiCall('/employees', 'POST', d);
@@ -1221,7 +1236,7 @@
             const records = appState.dailyRecords.filter(r => { const d = new Date(r.date); return r.emp_id == empId && d.getFullYear() == year && (d.getMonth()+1) == month && d.getDate() >= dStart && d.getDate() <= dEnd; }); 
             let salary = emp.salary / 2; 
             const ot = records.reduce((s,r) => s + (r.ot_total||0), 0); const bonus = records.reduce((s,r) => s + (r.trip_bonus||0), 0); 
-            let otherDaily = 0; records.forEach(r => { const o = r.other_income||{}; Object.values(o).forEach(v => otherDaily += parseFloat(v)||0); }); 
+            let otherDaily = 0; records.forEach(r => { const o = safeParseOtherIncome(r.other_income); Object.values(o).forEach(v => otherDaily += parseFloat(v)||0); }); 
             const deductAdv = records.reduce((s,r) => s + (r.deduct_advance||0), 0); 
             document.getElementById('inp-p-salary').value = salary; document.getElementById('inp-p-incentive').value = ot + bonus + otherDaily; document.getElementById('inp-p-advance').value = deductAdv; 
             let sso = 0; 
@@ -1410,9 +1425,23 @@
             const m = parseInt(document.getElementById('rpt-month').value); const y = parseInt(document.getElementById('rpt-year').value); const p = document.getElementById('rpt-period').value; 
             filteredReportData = appState.history.filter(h => h.month === m && h.year === y && (p === 'all' || h.period == p)); 
             const monthNames = ["", "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."]; 
-            document.getElementById('rpt-list').innerHTML = filteredReportData.map(h => { const income = h.salary + h.incentive + h.other; const deduct = h.sso + h.tax + h.advance + (h.student_loan||0) + h.water + h.electricity; return `<tr class="hover:bg-slate-50 border-b"><td class="p-4 text-center"><span class="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-bold">${h.period}</span></td><td class="p-4 text-center">${monthNames[h.month]}</td><td class="p-4 text-center">${h.year}</td><td class="p-4 font-mono text-xs">${h.emp_id}</td><td class="p-4 font-bold text-slate-700">${h.name}</td><td class="p-4 text-slate-600">${h.pos}</td><td class="p-4 text-right">${h.salary.toLocaleString()}</td><td class="p-4 text-right">${h.incentive.toLocaleString()}</td><td class="p-4 text-right">${h.other.toLocaleString()}</td><td class="p-4 text-right text-green-600 font-bold">${income.toLocaleString()}</td><td class="p-4 text-right">${h.sso.toLocaleString()}</td><td class="p-4 text-right">${h.tax.toLocaleString()}</td><td class="p-4 text-right">${h.advance.toLocaleString()}</td><td class="p-4 text-right">${(h.student_loan||0).toLocaleString()}</td><td class="p-4 text-right">${h.water.toLocaleString()}</td><td class="p-4 text-right">${h.electricity.toLocaleString()}</td><td class="p-4 text-right text-red-500 font-bold">${deduct.toLocaleString()}</td><td class="p-4 text-right font-bold text-slate-800 text-lg">${h.net.toLocaleString()}</td></tr>`; }).join(''); 
+            document.getElementById('rpt-list').innerHTML = filteredReportData.map(h => { const income = h.salary + h.incentive + h.other; const deduct = h.sso + h.tax + h.advance + (h.student_loan||0) + h.water + h.electricity; return `<tr class="hover:bg-slate-50 border-b"><td class="p-4 text-center"><span class="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-bold">${h.period}</span></td><td class="p-4 text-center">${monthNames[h.month]}</td><td class="p-4 text-center">${h.year}</td><td class="p-4 font-mono text-xs">${h.emp_id}</td><td class="p-4 font-bold text-slate-700">${h.name}</td><td class="p-4 text-slate-600">${h.pos}</td><td class="p-4 text-right">${h.salary.toLocaleString()}</td><td class="p-4 text-right">${h.incentive.toLocaleString()}</td><td class="p-4 text-right">${h.other.toLocaleString()}</td><td class="p-4 text-right text-green-600 font-bold">${income.toLocaleString()}</td><td class="p-4 text-right">${h.sso.toLocaleString()}</td><td class="p-4 text-right">${h.tax.toLocaleString()}</td><td class="p-4 text-right">${h.advance.toLocaleString()}</td><td class="p-4 text-right">${(h.student_loan||0).toLocaleString()}</td><td class="p-4 text-right">${h.water.toLocaleString()}</td><td class="p-4 text-right">${h.electricity.toLocaleString()}</td><td class="p-4 text-right text-red-500 font-bold">${deduct.toLocaleString()}</td><td class="p-4 text-right font-bold text-slate-800 text-lg">${h.net.toLocaleString()}</td><td class="p-4 text-center"><button onclick="deletePayrollHistory('${h.record_id || h.id}')" class="w-6 h-6 rounded-full bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center text-xs" title="ลบข้อมูลเงินเดือน"><i class="fa-solid fa-trash"></i></button></td></tr>`; }).join(''); 
             document.getElementById('export-buttons-area').style.display = filteredReportData.length ? 'flex' : 'none'; 
         }
+
+        window.deletePayrollHistory = async function(recordId) {
+            if(!recordId) return Swal.fire('Error', 'ไม่พบ Record ID (เฉพาะรายการที่เพิ่งบันทึกแบบเก่าอาจไม่มี ID ให้โหลดหน้าเว็บใหม่)', 'error');
+            const r = await Swal.fire({title: 'ยืนยันลบประวัติเงินเดือน?', text: 'การลบจะนำข้อมูลออกจากระบบถาวร', icon: 'warning', showCancelButton: true});
+            if(r.isConfirmed) {
+                try {
+                    await apiCall(`/payroll/${recordId}`, 'DELETE');
+                    appState.history = appState.history.filter(h => (h.record_id || h.id) !== recordId);
+                    filterReport();
+                    Swal.fire('ลบเรียบร้อย', '', 'success');
+                } catch(e) { Swal.fire('Error', e.message, 'error'); }
+            }
+        }
+
         window.filterContractorReport = function() { 
             const m = parseInt(document.getElementById('rpt-c-month').value); const y = parseInt(document.getElementById('rpt-c-year').value); const list = appState.projects.filter(p => { const d = new Date(p.date); return d.getMonth()+1 === m && d.getFullYear() === y; }); window.filteredContractorData = list;
             if (list.length === 0) { document.getElementById('rpt-c-list').innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400">ไม่มีข้อมูลในเดือนนี้</td></tr>`; document.getElementById('rpt-c-foot').classList.add('hidden'); document.getElementById('contractor-export-area').classList.add('hidden'); return; }
