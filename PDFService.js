@@ -22,40 +22,77 @@ const initDoc = (orientation = 'p') => {
 
 // Helper: ฟังก์ชันแปลงตัวเลขเป็นคำอ่านภาษาไทย (บาท)
 const bahtText = (num) => {
-    if (!num && num !== 0) return "";
-    num = parseFloat(num).toFixed(2);
-    const suffixes = ["", "สิบ", "ร้อย", "พัน", "หมื่น", "แสน", "ล้าน"];
-    const digits = ["ศูนย์", "หนึ่ง", "สอง", "สาม", "สี่", "ห้า", "หก", "เจ็ด", "แปด", "เก้า"];
-    let parts = num.split(".");
+    if (num === null || num === undefined) return "";
+    let numberString = parseFloat(num).toFixed(2);
+    if (parseFloat(numberString) === 0) return "ศูนย์บาทถ้วน";
+
+    const textNum = ["ศูนย์", "หนึ่ง", "สอง", "สาม", "สี่", "ห้า", "หก", "เจ็ด", "แปด", "เก้า"];
+    const textDigit = ["", "สิบ", "ร้อย", "พัน", "หมื่น", "แสน", "ล้าน"];
+
+    const parts = numberString.split(".");
     let baht = parts[0];
     let satang = parts[1];
-    let result = "";
-    let len = baht.length;
 
-    for (let i = 0; i < len; i++) {
-        let digit = parseInt(baht.charAt(i));
-        let pos = len - i - 1;
-        if (digit !== 0) {
-            if (pos % 6 === 1 && digit === 1 && len > 1) result += "";
-            else if (pos % 6 === 1 && digit === 2) result += "ยี่";
-            else if (pos % 6 === 0 && digit === 1 && i > 0 && len > 1) result += "เอ็ด";
-            else result += digits[digit];
-            result += suffixes[pos % 6];
-        }
-        if (pos % 6 === 0 && pos > 0) result += "ล้าน";
-    }
-    result += "บาท";
-    if (Number(satang) === 0) result += "ถ้วน";
-    else {
-        for (let i = 0; i < 2; i++) {
-            let digit = parseInt(satang.charAt(i));
-            let pos = 1 - i;
+    let result = "";
+
+    // Convert Baht
+    if (baht !== "0") {
+        let bahtStr = "";
+        const len = baht.length;
+        for (let i = 0; i < len; i++) {
+            const digit = parseInt(baht.charAt(i));
+            const pos = len - i - 1;
+            const digitPos = pos % 6;
+
             if (digit !== 0) {
-                if (pos === 1 && digit === 1) result += "";
-                else if (pos === 1 && digit === 2) result += "ยี่";
-                else if (pos === 0 && digit === 1 && i > 0) result += "เอ็ด";
-                else result += digits[digit];
-                result += (pos === 1 ? "สิบ" : "");
+                if (digitPos === 1 && digit === 1) {
+                    // ไม่เติม "หนึ่ง" นำหน้า "สิบ"
+                } else if (digitPos === 1 && digit === 2) {
+                    bahtStr += "ยี่";
+                } else if (digitPos === 0 && digit === 1 && i !== 0 && pos > 0) {
+                    // หลักหน่วยล้าน ไม่ใช้เอ็ด ถ้าเป็น 1 ล้านถ้วน (เช่น 1,000,000)
+                    // แต่ถ้าเป็น 11,000,000 ใช้เอ็ดล้าน
+                    // logic ด้านล่างนี้เอาแบบง่ายๆ
+                    if (len === 7 && i === 0) {
+                         bahtStr += "หนึ่ง";
+                    } else {
+                         bahtStr += "เอ็ด";
+                    }
+                } else if (digitPos === 0 && digit === 1 && i !== 0 && len > 1) {
+                    bahtStr += "เอ็ด";
+                } else {
+                    bahtStr += textNum[digit];
+                }
+                bahtStr += textDigit[digitPos];
+            }
+            if (digitPos === 0 && pos > 0) {
+                bahtStr += "ล้าน";
+            }
+        }
+        // Cleanup extra "ล้าน"
+        bahtStr = bahtStr.replace(/ล้านล้าน/g, "ล้าน");
+        result += bahtStr + "บาท";
+    }
+
+    // Convert Satang
+    if (satang === "00") {
+        result += "ถ้วน";
+    } else {
+        const len = satang.length;
+        for (let i = 0; i < len; i++) {
+            const digit = parseInt(satang.charAt(i));
+            const pos = len - i - 1;
+            if (digit !== 0) {
+                if (pos === 1 && digit === 1) {
+                    //
+                } else if (pos === 1 && digit === 2) {
+                    result += "ยี่";
+                } else if (pos === 0 && digit === 1 && satang.charAt(0) !== "0") {
+                    result += "เอ็ด";
+                } else {
+                    result += textNum[digit];
+                }
+                result += textDigit[pos];
             }
         }
         result += "สตางค์";
