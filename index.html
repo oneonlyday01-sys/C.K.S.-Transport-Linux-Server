@@ -13,6 +13,9 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    
+    <!-- เพิ่ม Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script type="module" src="./src/fonts/SarabunNew.js"></script>
     
@@ -66,8 +69,8 @@
 
     <div id="loading-overlay" class="fixed inset-0 bg-white/95 backdrop-blur-md z-[9999] flex flex-col justify-center items-center text-center p-6 hidden">
         <div class="relative mb-6"><div class="w-16 h-16 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div></div>
-        <h2 class="text-xl font-bold text-slate-700 mb-2" id="loading-title">กำลังเชื่อมต่อฐานข้อมูล Master API...</h2>
-        <p class="text-sm text-slate-500 max-w-md" id="loading-desc">ระบบกำลังโหลดข้อมูลล่าสุดจาก C.K.S. Server</p>
+        <h2 class="text-xl font-bold text-slate-700 mb-2" id="loading-title">กำลังเชื่อมต่อฐานข้อมูล C.K.S. Server...</h2>
+        <p class="text-sm text-slate-500 max-w-md" id="loading-desc">ระบบกำลังโหลดข้อมูลล่าสุด</p>
     </div>
 
     <div class="md:hidden fixed top-0 left-0 right-0 h-16 bg-slate-900 z-40 flex items-center justify-between px-4 shadow-md">
@@ -687,34 +690,22 @@
 
     <script>
         // ============================================================
-        // 1. CONFIGURATION & MASTER API SETUP (No more Supabase)
+        // 1. SUPABASE CONFIGURATION 
         // ============================================================
-        const API_BASE = "https://tsp3111.tail2f0c45.ts.net/api/ckstransport";
-        const TEAM_PIN = "2642";
+        // <<< อย่าลืมเปลี่ยน 2 บรรทัดด้านล่างนี้ให้เป็นข้อมูลจาก Supabase Project ของคุณจริงๆ >>>
+        const SUPABASE_URL = "https://thedong2642.tail2f0c45.ts.net"; // ตัวอย่าง URL ที่ถูกต้อง ต้องขึ้นต้นด้วย https://
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE"; 
 
-        // ฟังก์ชันพระเอกของเราสำหรับยิงไปที่ Master API
-        async function apiCall(endpoint, method = 'GET', body = null) {
-            const options = {
-                method: method,
-                headers: { 'Content-Type': 'application/json' }
-            };
-            if (body) options.body = JSON.stringify(body);
-            
-            try {
-                const res = await fetch(`${API_BASE}${endpoint}`, options);
-                if (!res.ok) {
-                    let errorMsg = 'API Error';
-                    try { const errData = await res.json(); errorMsg = errData.error || errorMsg; } 
-                    catch(e) { errorMsg = await res.text() || errorMsg; }
-                    throw new Error(errorMsg);
-                }
-                // ใช้ json() ทุก method เพื่อ consistency (Backend ตอบ JSON เสมอ)
-                return await res.json();
-            } catch (e) {
-                console.error(`API_ERROR [${method} ${endpoint}]:`, e);
-                throw e; // โยน Error ไปให้ตัวที่เรียกจัดการ
+        let supabaseClient = null;
+        try {
+            if (window.supabase) {
+                supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
             }
+        } catch (error) {
+            console.error("Supabase Config Error:", error);
         }
+
+        const TEAM_PIN = "2642";
 
         // ============================================================
         // 2. GLOBAL STATE
@@ -784,24 +775,35 @@
 
         window.getInitialData = async function() {
             try {
-                // ยิง API ดึงข้อมูลทั้งหมดในรอบเดียว
-                const data = await apiCall(`/init?t=${Date.now()}`);
+                if (!supabaseClient) throw new Error("ระบบยังไม่ได้เชื่อมต่อ Supabase อย่างถูกต้อง กรุณาตรวจสอบ URL ในโค้ด");
+
+                // ดึงข้อมูลทั้งหมดจาก Supabase Tables พร้อมกัน
+                const [empRes, dailyRes, histRes, projRes, ledgerRes, setRes] = await Promise.all([
+                    supabaseClient.from('employees').select('*'),
+                    supabaseClient.from('daily_records').select('*'),
+                    supabaseClient.from('history').select('*'),
+                    supabaseClient.from('projects').select('*'),
+                    supabaseClient.from('ledger').select('*'),
+                    supabaseClient.from('settings').select('*')
+                ]);
+
+                if (empRes.error) throw empRes.error;
                 
-                appState.employees = data.employees || []; 
-                appState.dailyRecords = data.dailyRecords || [];
-                appState.history = data.payrollHistory || []; 
-                appState.projects = data.projects || [];
-                appState.ledger = data.ledger || [];
+                appState.employees = empRes.data || []; 
+                appState.dailyRecords = dailyRes.data || [];
+                appState.history = histRes.data || []; 
+                appState.projects = projRes.data || [];
+                appState.ledger = ledgerRes.data || [];
                 
                 appState.settings = {};
-                if(data.settings && Array.isArray(data.settings)) {
-                    data.settings.forEach(s => appState.settings[s.key] = s.value);
+                if(setRes.data && Array.isArray(setRes.data)) {
+                    setRes.data.forEach(s => appState.settings[s.key] = s.value);
                 }
 
                 initSystemUI(); 
             } catch (e) { 
-                console.error(e); 
-                Swal.fire('การเชื่อมต่อขัดข้อง', 'ไม่สามารถเชื่อมต่อกับ Master API ได้ (ตรวจสอบว่า Server เปิดอยู่หรือไม่)', 'error');
+                console.error("Fetch Data Error:", e); 
+                Swal.fire('การเชื่อมต่อขัดข้อง', 'ไม่สามารถดึงข้อมูลได้: ' + (e.message || 'ตรวจสอบการตั้งค่า URL/Key ของ Supabase'), 'error');
             }
         }
 
@@ -827,7 +829,6 @@
             updateDash();
         }
 
-        // Make helper functions available globally
         window.viewPeriodHistory = function() {
             const empId = document.getElementById('d-emp').value;
             const dateStr = document.getElementById('d-date').value;
@@ -893,7 +894,7 @@
             Swal.fire({ title: 'ประวัติงานสะสม (งวดปัจจุบัน)', html: html, width: '800px', showCloseButton: true, showConfirmButton: false });
         };
 
-        window.printTripReport = () => { /* ... PDF Trip Report Logic stays the same ... */ 
+        window.printTripReport = () => {
             const m = parseInt(document.getElementById('rpt-t-month').value); const y = parseInt(document.getElementById('rpt-t-year').value); const p = parseInt(document.getElementById('rpt-t-period').value); const type = document.querySelector('input[name="rpt-t-type"]:checked').value;
             const monthNames = ["", "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
             const monthLabel = `${monthNames[m]} ${y}`;
@@ -1005,7 +1006,6 @@
             }); 
         }
 
-        // --- DAILY RECORDS ---
         window.renderDailyEmpList = function(search = '') { 
             const container = document.getElementById('d-emp-list-container'); 
             let list = appState.employees.filter(e => e.status !== 'Resigned'); 
@@ -1071,9 +1071,11 @@
             }; 
             
             try {
+                if (!supabaseClient) throw new Error("ไม่สามารถเชื่อมต่อ Supabase ได้");
                 Swal.fire({ title: 'กำลังบันทึก...', didOpen: () => Swal.showLoading() }); 
-                // *** เปลี่ยนมายิง Master API แทน ***
-                await apiCall('/daily', 'POST', data);
+                
+                const { error } = await supabaseClient.from('daily_records').upsert(data);
+                if (error) throw error;
                 
                 const idx = appState.dailyRecords.findIndex(r => r.id === data.id); 
                 if(idx > -1) appState.dailyRecords[idx] = data; else appState.dailyRecords.push(data); 
@@ -1112,8 +1114,9 @@
             const cfm = await Swal.fire({ title: 'ยืนยันการลบ?', text: "รายการนี้จะหายไปถาวร", icon: 'warning', showCancelButton: true, confirmButtonText: 'ลบรายการ', cancelButtonText: 'ยกเลิก', confirmButtonColor: '#ef4444' });
             if(cfm.isConfirmed) { 
                 try {
-                    // *** เปลี่ยนมายิง Master API ***
-                    await apiCall(`/daily/${id}`, 'DELETE');
+                    const { error } = await supabaseClient.from('daily_records').delete().eq('id', id);
+                    if (error) throw error;
+                    
                     appState.dailyRecords = appState.dailyRecords.filter(r => r.id != id); 
                     filterDailyList(); updateDash(); 
                     Swal.fire('ลบเรียบร้อย', '', 'success'); 
@@ -1151,7 +1154,6 @@
             if(clearEmp) { document.getElementById('btn-save-daily').disabled = true; document.getElementById('daily-form-area').classList.add('opacity-50', 'pointer-events-none'); } 
         }
 
-        // --- EMPLOYEES ---
         window.filterEmpTable = function(type, btn) { currentEmpFilter = type; if(btn) { document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); } renderEmpTable(type); }
         window.renderEmpTable = function(filter) { 
             const list = appState.employees.filter(e => filter === 'All' ? true : e.type === filter); 
@@ -1180,8 +1182,9 @@
             if (d.salary < 0) return Swal.fire('ข้อมูลไม่ถูกต้อง', 'เงินเดือนไม่สามารถติดลบได้', 'warning');
 
             try {
-                // *** เปลี่ยนมายิง Master API ***
-                await apiCall('/employees', 'POST', d);
+                if (!supabaseClient) throw new Error("ไม่สามารถเชื่อมต่อ Supabase ได้");
+                const { error } = await supabaseClient.from('employees').upsert(d);
+                if (error) throw error;
                 
                 const idx = appState.employees.findIndex(em => em.id == d.id); 
                 if(idx > -1) appState.employees[idx] = d; else appState.employees.push(d); 
@@ -1195,12 +1198,13 @@
         }
 
         window.viewEmp = function(id) { const e = appState.employees.find(x => x.id == id); if(!e) return; Swal.fire({ title: 'ข้อมูลพนักงาน', html: `<div class="text-left text-sm space-y-3 p-2"><div class="flex items-center gap-4 bg-slate-50 p-3 rounded-xl border border-slate-200"><div class="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xl">${e.fname.charAt(0)}</div><div><div class="font-bold text-lg text-slate-800">${e.prefix} ${e.fname} ${e.lname}</div><div class="text-slate-500 text-xs">${e.pos} (${e.type === 'Contractor' ? 'รับเหมา' : 'ประจำ'})</div></div></div><div class="grid grid-cols-2 gap-2"><div class="text-slate-500 text-xs">รหัส/ID</div><div class="font-mono font-bold">${e.id}</div></div><div class="grid grid-cols-2 gap-2"><div class="text-slate-500 text-xs">เริ่มงาน</div><div>${e.start_date || '-'}</div></div><div class="grid grid-cols-2 gap-2"><div class="text-slate-500 text-xs">เงินเดือนฐาน</div><div class="font-bold text-green-600">${e.salary.toLocaleString()} บาท</div></div><div><div class="text-slate-500 text-xs mb-1">ที่อยู่</div><div class="bg-slate-50 p-2 rounded text-slate-700 border border-slate-100">${e.address || '-'}</div></div><div><div class="text-slate-500 text-xs mb-1">เลขที่บัญชี</div><div class="font-mono bg-blue-50 text-blue-800 p-2 rounded border border-blue-100">${e.bank || '-'}</div></div><div class="text-xs text-right text-slate-400 pt-2 border-t">สถานะ: ${e.status}</div></div>`, showCloseButton: true, showConfirmButton: false }); }
+        
         window.delEmp = async function(id) { 
             const r = await Swal.fire({ title:'ยืนยันลบ?', icon:'warning', showCancelButton:true });
             if(r.isConfirmed) {
                 try {
-                    // *** เปลี่ยนมายิง Master API ***
-                    await apiCall(`/employees/${id}`, 'DELETE');
+                    const { error } = await supabaseClient.from('employees').delete().eq('id', id);
+                    if (error) throw error;
                     appState.employees = appState.employees.filter(e => e.id != id); 
                     renderEmpTable(currentEmpFilter);
                     renderDailyEmpList();
@@ -1209,7 +1213,6 @@
         }
         window.toggleResignInput = function() { const status = document.getElementById('e-status').value; document.getElementById('div-resign-date').classList.toggle('hidden', status !== 'Resigned'); }
 
-        // --- PAYROLL ---
         window.initDateDropdowns = function() { 
             const d = new Date(); const curYear = d.getFullYear(); const curMonth = d.getMonth() + 1; 
             const py = document.getElementById('pay-year'); const pm = document.getElementById('pay-month'); const pp = document.getElementById('pay-period'); 
@@ -1226,6 +1229,7 @@
         }
 
         window.renderPayrollEmpSelect = function() { const s = document.getElementById('inp-p-employee'); if(!s) return; s.innerHTML = '<option value="">-- เลือกพนักงาน --</option>'; appState.employees.filter(e => e.status !== 'Resigned' && e.type === 'Monthly').forEach(e => { s.innerHTML += `<option value="${e.id}">${e.prefix} ${e.fname} ${e.lname}</option>`; }); }
+        
         window.selectPayrollEmp = function() { 
             const empId = document.getElementById('inp-p-employee').value; const btn = document.getElementById('btn-save-payroll'); const posDisp = document.getElementById('p-pos-display'); 
             if(!empId) { resetPayrollForm(false); posDisp.innerText = ''; btn.disabled = true; return; } 
@@ -1288,8 +1292,8 @@
             if(appState.payrollTemp.length === 0) return Swal.fire('ไม่มีรายการ', '', 'warning'); 
             try {
                 Swal.fire({title:'กำลังบันทึก...', didOpen: () => Swal.showLoading()}); 
-                // *** เปลี่ยนมายิง Master API (ส่งเป็น array) ***
-                await apiCall('/payroll', 'POST', appState.payrollTemp);
+                const { error } = await supabaseClient.from('history').insert(appState.payrollTemp);
+                if (error) throw error;
                 
                 appState.history.push(...appState.payrollTemp);
                 appState.payrollTemp = []; 
@@ -1300,7 +1304,6 @@
             }
         }
 
-        // --- CONTRACTOR ---
         window.renderContractorPage = function() { const s = document.getElementById('c-emp'); s.innerHTML = '<option value="">-- เลือกผู้รับเหมา/พนักงาน --</option>'; appState.employees.filter(e => e.type === 'Contractor' && e.status === 'Active').forEach(e => { s.innerHTML += `<option value="${e.id}">${e.prefix} ${e.fname} ${e.lname}</option>`; }); renderContractorList(); }
         window.toggleContractorType = function() {
             const isExt = document.querySelector('input[name="c-type"]:checked').value === 'external'; document.getElementById('c-internal-sec').classList.toggle('hidden', isExt); document.getElementById('c-external-sec').classList.toggle('hidden', !isExt);
@@ -1322,6 +1325,7 @@
             if(combinedTotal > 0) { document.getElementById('c-job-container').innerHTML = ''; addContractorJobRow('ยอดสุทธิสะสมประจำเดือน (รวมค่าแรง/หักลบแล้ว)', combinedTotal); }
         }
         window.calcWHT = function() { const amount = parseFloat(document.getElementById('c-amount').value) || 0; const rate = parseFloat(document.querySelector('input[name="c-wht"]:checked').value); const tax = amount * (rate / 100); const net = amount - tax; document.getElementById('c-tax-disp').innerText = tax.toLocaleString(undefined, {minimumFractionDigits: 2}); document.getElementById('c-net-disp').innerText = net.toLocaleString(undefined, {minimumFractionDigits: 2}); }
+        
         window.saveContractorJob = async function() { 
             const isExt = document.querySelector('input[name="c-type"]:checked').value === 'external'; const empId = document.getElementById('c-emp').value; 
             if(!isExt && !empId) return Swal.fire('กรุณาเลือกผู้รับเหมา', '', 'warning'); if(isExt && !document.getElementById('c-ext-name').value.trim()) return Swal.fire('กรุณาระบุชื่อผู้รับเงิน', '', 'warning'); 
@@ -1332,8 +1336,8 @@
             
             try {
                 Swal.fire({title: 'กำลังบันทึก', didOpen: () => Swal.showLoading()}); 
-                // *** เปลี่ยนมายิง Master API ***
-                await apiCall('/projects', 'POST', d);
+                const { error } = await supabaseClient.from('projects').upsert(d);
+                if (error) throw error;
                 
                 const idx = appState.projects.findIndex(p => p.id == d.id); 
                 if(idx > -1) appState.projects[idx] = d; else appState.projects.push(d); 
@@ -1341,6 +1345,7 @@
                 Swal.fire({ icon: 'success', title: 'บันทึกสำเร็จ', html: 'ต้องการพิมพ์ใบสำคัญจ่ายเลยไหม?', showCancelButton: true, confirmButtonText: 'พิมพ์เลย' }).then(r => { if(r.isConfirmed) printPaymentVoucher(d.id); }); 
             } catch (error) { Swal.fire('Error', error.message, 'error'); }
         }
+
         window.changeContractorMonth = function(step) { appState.nav.cMonth += step; if(appState.nav.cMonth > 12) { appState.nav.cMonth = 1; appState.nav.cYear++; } else if(appState.nav.cMonth < 1) { appState.nav.cMonth = 12; appState.nav.cYear--; } renderContractorList(); }
         window.renderContractorList = function() { 
             const m = appState.nav.cMonth; const y = appState.nav.cYear; const list = appState.projects.filter(p => { const d = new Date(p.date); return d.getMonth()+1 === m && d.getFullYear() === y; }); 
@@ -1350,12 +1355,14 @@
                 return `<tr class="hover:bg-slate-50 border-b"><td class="p-4 text-xs">${p.date}</td><td class="p-4"><div class="font-bold text-slate-700">${name} ${p.is_external ? '<span class="text-[10px] bg-slate-200 text-slate-500 px-1 rounded">ภายนอก</span>' : ''}</div><div class="text-xs text-slate-500 truncate max-w-[200px]">${p.job_name}</div></td><td class="p-4 text-right">${p.amount.toLocaleString()}</td><td class="p-4 text-right text-red-500">${p.tax.toLocaleString()}</td><td class="p-4 text-right font-bold text-green-700">${p.net.toLocaleString()}</td><td class="p-4 text-center flex justify-center gap-1"><button onclick="viewProject('${p.id}')" class="w-8 h-8 rounded-full bg-slate-100 text-slate-600"><i class="fa-solid fa-eye"></i></button><button onclick="printPaymentVoucher('${p.id}')" class="w-8 h-8 rounded-full bg-slate-800 text-white"><i class="fa-solid fa-print"></i></button><button onclick="editProject('${p.id}')" class="w-8 h-8 rounded-full bg-blue-100 text-blue-600"><i class="fa-solid fa-pen"></i></button><button onclick="delProject('${p.id}')" class="w-8 h-8 rounded-full bg-red-100 text-red-600"><i class="fa-solid fa-trash"></i></button></td></tr>`; 
             }).join(''); 
         }
+
         window.viewProject = function(id) { 
             const p = appState.projects.find(x => x.id == id); if(!p) return; 
             let name = '-'; if(p.is_external) name = p.ext_name; else { const emp = appState.employees.find(e => e.id == p.emp_id); if(emp) name = `${emp.fname} ${emp.lname}`; } 
             let itemsHtml = ''; if(p.job_items && p.job_items.length > 0) { itemsHtml = p.job_items.map(i => `<div class="flex justify-between text-xs text-slate-600 ml-2 border-l-2 pl-2 border-slate-200"><span>- ${i.name}</span><span>${i.amount.toLocaleString()}</span></div>`).join(''); } 
             Swal.fire({ title: 'รายละเอียดงาน', html: `<div class="text-left space-y-2 text-sm"><div class="font-bold border-b pb-1">ข้อมูลงาน</div><div class="flex justify-between"><span>วันที่:</span><span>${p.date}</span></div><div class="flex justify-between"><span>ผู้รับเงิน:</span><span>${name}</span></div><div class="font-bold border-b pb-1 mt-3">รายการ</div>${itemsHtml}<div class="font-bold border-b pb-1 mt-3">การจ่ายเงิน</div><div class="flex justify-between"><span>รวมค่าจ้าง:</span><span>${p.amount.toLocaleString()}</span></div><div class="flex justify-between text-red-500"><span>หัก ณ ที่จ่าย (${p.wht_rate}%):</span><span>${p.tax.toLocaleString()}</span></div><div class="flex justify-between font-bold text-green-600 text-lg"><span>สุทธิ:</span><span>${p.net.toLocaleString()}</span></div><div class="flex justify-between mt-2 text-xs text-slate-400"><span>วันที่จ่าย:</span><span>${p.payment_date||'-'}</span></div></div>`, showCloseButton: true, showConfirmButton: false }); 
         }
+
         window.resetContractorForm = function() { document.getElementById('c-id').value = ''; document.querySelector('input[name="c-type"][value="internal"]').checked = true; toggleContractorType(); document.getElementById('c-job-container').innerHTML = ''; addContractorJobRow(); document.getElementById('c-amount').value = ''; document.querySelector('input[name="c-wht"][value="0"]').checked = true; calcWHT(); }
         window.editProject = function(id) { 
             const p = appState.projects.find(x => x.id == id); document.getElementById('c-id').value = p.id; document.getElementById('c-date').value = p.date; document.getElementById('c-pay-date').value = p.payment_date; 
@@ -1364,39 +1371,42 @@
             if(p.job_items && p.job_items.length > 0) { p.job_items.forEach(i => addContractorJobRow(i.name, i.amount)); } else { addContractorJobRow(p.job_name, p.amount); } 
             const radios = document.getElementsByName('c-wht'); for(let r of radios) r.checked = (parseFloat(r.value) == p.wht_rate); calcWHT(); window.scrollTo({top:0,behavior:'smooth'});
         }
+
         window.delProject = async function(id) { 
             const r = await Swal.fire({title:'ยืนยันลบ?', icon:'warning', showCancelButton:true});
             if(r.isConfirmed) {
                 try {
-                    // *** เปลี่ยนมายิง Master API ***
-                    await apiCall(`/projects/${id}`, 'DELETE');
+                    const { error } = await supabaseClient.from('projects').delete().eq('id', id);
+                    if(error) throw error;
                     appState.projects = appState.projects.filter(x => x.id != id); renderContractorList(); 
                 } catch(e) { Swal.fire('Error', e.message, 'error'); }
             }
         }
 
-        // --- LEDGER ---
         window.renderLedgerPage = function() { 
             const uniqueCats = new Set(); appState.ledger.forEach(l => { if(l.category) uniqueCats.add(l.category); }); 
             const s = document.getElementById('l-cat'); s.innerHTML = '<option value="">-- เลือกหมวดหมู่ --</option>'; uniqueCats.forEach(c => s.innerHTML += `<option value="${c}">${c}</option>`); s.innerHTML += `<option value="ADD_NEW" class="font-bold text-blue-600">+ เพิ่มหมวดหมู่ใหม่...</option>`; 
             const inc = appState.ledger.reduce((s,i)=>s+(i.income||0), 0); const exp = appState.ledger.reduce((s,i)=>s+(i.expense||0), 0); document.getElementById('ldg-balance').innerText = (inc - exp).toLocaleString(undefined, {minimumFractionDigits:2}); renderLedgerList(); 
         }
+
         document.getElementById('l-cat').addEventListener('change', async function() {
             if(this.value === 'ADD_NEW') {
                 const { value: newCat } = await Swal.fire({ title: 'เพิ่มหมวดหมู่ใหม่', input: 'text', inputPlaceholder: 'กรอกชื่อหมวดหมู่ที่นี่...', showCancelButton: true, confirmButtonText: 'เพิ่ม', cancelButtonText: 'ยกเลิก', inputValidator: (val) => { if (!val) return 'กรุณากรอกชื่อหมวดหมู่'; } });
                 if(newCat) { const opt = document.createElement('option'); opt.value = newCat; opt.text = newCat; this.insertBefore(opt, this.lastElementChild); this.value = newCat; } else { this.value = ''; }
             }
         });
+
         window.saveLedger = async function() { 
             const d = { id: document.getElementById('l-id').value || 'LDG-'+Date.now(), date: document.getElementById('l-date').value, description: document.getElementById('l-desc').value, category: document.getElementById('l-cat').value, income: parseFloat(document.getElementById('l-income').value) || 0, expense: parseFloat(document.getElementById('l-expense').value) || 0 }; 
             if(!d.date || !d.description) return Swal.fire('กรุณากรอกข้อมูล', '', 'warning'); 
             try {
-                // *** เปลี่ยนมายิง Master API ***
-                await apiCall('/ledger', 'POST', d);
+                const { error } = await supabaseClient.from('ledger').upsert(d);
+                if(error) throw error;
                 const idx = appState.ledger.findIndex(l => l.id == d.id); if(idx > -1) appState.ledger[idx] = d; else appState.ledger.push(d); 
                 resetLedgerForm(); renderLedgerPage(); Swal.fire('สำเร็จ','','success');
             } catch(e) { Swal.fire('Error', e.message, 'error'); }
         }
+
         window.changeLedgerMonth = function(step) { appState.nav.lMonth += step; if(appState.nav.lMonth > 12) { appState.nav.lMonth = 1; appState.nav.lYear++; } else if(appState.nav.lMonth < 1) { appState.nav.lMonth = 12; appState.nav.lYear--; } renderLedgerList(); }
         window.renderLedgerList = function() { 
             const m = appState.nav.lMonth; const y = appState.nav.lYear; const list = appState.ledger.filter(l => { const d = new Date(l.date); return d.getMonth()+1 === m && d.getFullYear() === y; }).sort((a,b) => new Date(b.date) - new Date(a.date)); 
@@ -1404,23 +1414,25 @@
             document.getElementById('l-list').innerHTML = list.map(l => { sIn += l.income; sEx += l.expense; return `<tr class="hover:bg-slate-50 border-b"><td class="p-4 text-xs">${l.date}</td><td class="p-4 font-bold text-slate-700">${l.description}</td><td class="p-4 text-xs bg-slate-50 text-slate-500">${l.category||'-'}</td><td class="p-4 text-right text-green-600">${l.income>0 ? l.income.toLocaleString() : '-'}</td><td class="p-4 text-right text-red-500">${l.expense>0 ? l.expense.toLocaleString() : '-'}</td><td class="p-4 text-center flex justify-center gap-1"><button onclick="editLedger('${l.id}')" class="text-blue-500 hover:text-blue-700 mx-1"><i class="fa-solid fa-pen"></i></button><button onclick="delLedger('${l.id}')" class="text-red-400 hover:text-red-600 mx-1"><i class="fa-solid fa-trash"></i></button></td></tr>`; }).join(''); 
             document.getElementById('ldg-sum-inc').innerText = sIn.toLocaleString(); document.getElementById('ldg-sum-exp').innerText = sEx.toLocaleString(); 
         }
+
         window.resetLedgerForm = function() { document.getElementById('l-id').value = ''; document.getElementById('l-desc').value = ''; document.getElementById('l-cat').value = ''; document.getElementById('l-income').value = ''; document.getElementById('l-expense').value = ''; }
         window.editLedger = function(id) { const l = appState.ledger.find(x => x.id == id); document.getElementById('l-id').value = l.id; document.getElementById('l-date').value = l.date; document.getElementById('l-desc').value = l.description; const catSelect = document.getElementById('l-cat'); let found = false; for(let opt of catSelect.options) { if(opt.value === l.category) found = true; } if(!found && l.category) { const opt = document.createElement('option'); opt.value = l.category; opt.text = l.category; catSelect.insertBefore(opt, catSelect.lastElementChild); } catSelect.value = l.category || ''; document.getElementById('l-income').value = l.income > 0 ? l.income : ''; document.getElementById('l-expense').value = l.expense > 0 ? l.expense : ''; window.scrollTo({top:0,behavior:'smooth'}); }
+        
         window.delLedger = async function(id) { 
             const r = await Swal.fire({title:'ลบรายการ?', icon:'warning', showCancelButton:true});
             if(r.isConfirmed) {
                 try {
-                    // *** เปลี่ยนมายิง Master API ***
-                    await apiCall(`/ledger/${id}`, 'DELETE');
+                    const { error } = await supabaseClient.from('ledger').delete().eq('id', id);
+                    if(error) throw error;
                     appState.ledger = appState.ledger.filter(x => x.id != id); renderLedgerPage(); 
                 } catch(e) { Swal.fire('Error', e.message, 'error'); }
             }
         }
 
-        // --- REPORTS & SETTINGS ---
         window.switchReportTab = function(tab, btn) { document.querySelectorAll('.rpt-tab-content').forEach(e => e.classList.add('hidden')); document.getElementById(`rpt-tab-${tab}`).classList.remove('hidden'); if(btn) { btn.parentElement.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); } if(tab === 'contractor') { initYearSelect('rpt-c-year'); initMonthSelect('rpt-c-month'); } else if(tab === 'ledger') { initYearSelect('rpt-l-year'); initMonthSelect('rpt-l-month'); } else if(tab === 'trip') { initYearSelect('rpt-t-year'); initMonthSelect('rpt-t-month'); } }
         window.initYearSelect = function(id) { const el = document.getElementById(id); if(el.options.length < 2) { const y = new Date().getFullYear(); el.innerHTML = `<option value="${y}">${y}</option><option value="${y-1}">${y-1}</option>`; } }
         window.initMonthSelect = function(id) { const el = document.getElementById(id); if(el.options.length < 2) { const curMonth = new Date().getMonth() + 1; const mArr = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."]; if(id==='rpt-l-month') el.innerHTML = '<option value="all">-- ทั้งปี --</option>'; else el.innerHTML = ''; mArr.forEach((m,i) => el.innerHTML += `<option value="${i+1}" ${i+1===curMonth?'selected':''}>${m}</option>`); } }
+        
         window.filterReport = function() { 
             const m = parseInt(document.getElementById('rpt-month').value); const y = parseInt(document.getElementById('rpt-year').value); const p = document.getElementById('rpt-period').value; 
             filteredReportData = appState.history.filter(h => h.month === m && h.year === y && (p === 'all' || h.period == p)); 
@@ -1430,11 +1442,12 @@
         }
 
         window.deletePayrollHistory = async function(recordId) {
-            if(!recordId) return Swal.fire('Error', 'ไม่พบ Record ID (เฉพาะรายการที่เพิ่งบันทึกแบบเก่าอาจไม่มี ID ให้โหลดหน้าเว็บใหม่)', 'error');
+            if(!recordId) return Swal.fire('Error', 'ไม่พบ Record ID', 'error');
             const r = await Swal.fire({title: 'ยืนยันลบประวัติเงินเดือน?', text: 'การลบจะนำข้อมูลออกจากระบบถาวร', icon: 'warning', showCancelButton: true});
             if(r.isConfirmed) {
                 try {
-                    await apiCall(`/payroll/${recordId}`, 'DELETE');
+                    const { error } = await supabaseClient.from('history').delete().eq('id', recordId);
+                    if(error) throw error;
                     appState.history = appState.history.filter(h => (h.record_id || h.id) !== recordId);
                     filterReport();
                     Swal.fire('ลบเรียบร้อย', '', 'success');
@@ -1454,6 +1467,7 @@
             document.getElementById('rpt-c-foot').innerHTML = `<tr><td colspan="2" class="p-4 text-right text-slate-600">รวมทั้งหมด ${list.length} รายการ</td><td class="p-4 text-right text-slate-800 text-base">${totalAmount.toLocaleString()}</td><td class="p-4 text-right text-red-600 text-base">${totalTax.toLocaleString()}</td><td class="p-4 text-right text-green-700 text-base">${totalNet.toLocaleString()}</td><td class="p-4"></td></tr>`;
             document.getElementById('rpt-c-foot').classList.remove('hidden'); document.getElementById('contractor-export-area').classList.remove('hidden');
         }
+
         window.exportContractorReportPDF = function() {
             if(!window.filteredContractorData || window.filteredContractorData.length === 0) return Swal.fire('ไม่มีข้อมูล', 'กรุณากดค้นหาก่อน', 'warning');
             const mSelect = document.getElementById('rpt-c-month'); const monthText = mSelect.options[mSelect.selectedIndex].text; const yearText = document.getElementById('rpt-c-year').value;
@@ -1463,6 +1477,7 @@
             });
             if(window.PDFService && window.PDFService.generateContractorReportPDF) { PDFService.generateContractorReportPDF(pdfData, monthText, yearText); } else { Swal.fire('รอการอัปเดต', 'ฟังก์ชันสร้าง PDF สำหรับหน้านี้กำลังรอการเพิ่มโค้ดใน PDFService.js', 'info'); }
         }
+
         window.filterLedgerReport = function() { 
             const mVal = document.getElementById('rpt-l-month').value; const y = parseInt(document.getElementById('rpt-l-year').value); 
             const list = appState.ledger.filter(l => { const d = new Date(l.date); return (mVal === 'all' || d.getMonth()+1 == mVal) && d.getFullYear() === y; }); 
@@ -1472,6 +1487,7 @@
             document.getElementById('rpt-l-list').innerHTML = list.map(l => `<tr class="hover:bg-slate-50 border-b"><td class="p-4 text-xs">${l.date}</td><td class="p-4 font-bold text-slate-700">${l.description}</td><td class="p-4 text-xs text-slate-500">${l.category}</td><td class="p-4 text-right text-green-600">${l.income?l.income.toLocaleString():'-'}</td><td class="p-4 text-right text-red-500">${l.expense?l.expense.toLocaleString():'-'}</td></tr>`).join(''); 
             appState.filteredLedger = list; appState.ledgerSummary = { inc, exp, net: inc-exp, label: mVal === 'all' ? `ประจำปี ${y}` : `ประจำเดือน ${mVal}/${y}` }; 
         }
+
         window.filterTripReport = function() {
             const m = parseInt(document.getElementById('rpt-t-month').value); const y = parseInt(document.getElementById('rpt-t-year').value); const p = parseInt(document.getElementById('rpt-t-period').value); const type = document.querySelector('input[name="rpt-t-type"]:checked').value;
             let startDate = 1, endDate = 15; let lastDayOfMonth = new Date(y, m, 0).getDate(); if (p === 2) { startDate = 16; endDate = lastDayOfMonth; }
@@ -1520,8 +1536,9 @@
             ];
             try {
                 Swal.fire({title:'กำลังบันทึก...', didOpen: () => Swal.showLoading()});
-                // *** เปลี่ยนมายิง Master API (ส่งเป็น array) ***
-                await apiCall('/settings', 'POST', { updates: updates });
+                const { error } = await supabaseClient.from('settings').upsert(updates);
+                if (error) throw error;
+                
                 updates.forEach(u => appState.settings[u.key] = u.value);
                 Swal.fire('บันทึกเรียบร้อย','','success'); 
             } catch (error) {
