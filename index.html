@@ -1174,7 +1174,20 @@
             e.preventDefault(); 
             const type = document.querySelector('input[name="e-type"]:checked').value; 
             const d = { 
-                id: document.getElementById('e-id').value.trim(), prefix: document.getElementById('e-prefix').value, fname: document.getElementById('e-fname').value.trim(), lname: document.getElementById('e-lname').value.trim(), pos: document.getElementById('e-pos').value.trim(), salary: parseFloat(document.getElementById('e-salary').value) || 0, bank: document.getElementById('e-bank').value.trim(), status: document.getElementById('e-status').value, start_date: document.getElementById('e-start').value, resign_date: document.getElementById('e-resign').value, gender: document.getElementById('e-prefix').value === 'นาย' ? 'M' : 'F', type: type, address: document.getElementById('e-address').value.trim() 
+                id: document.getElementById('e-id').value.trim(), 
+                prefix: document.getElementById('e-prefix').value, 
+                fname: document.getElementById('e-fname').value.trim(), 
+                lname: document.getElementById('e-lname').value.trim(), 
+                pos: document.getElementById('e-pos').value.trim(), 
+                salary: parseFloat(document.getElementById('e-salary').value) || 0, 
+                bank: document.getElementById('e-bank').value.trim(), 
+                status: document.getElementById('e-status').value, 
+                // เพิ่ม || null เพื่อให้ถ้าค่าว่าง จะแปลงเป็น null ส่งไปแทน ""
+                start_date: document.getElementById('e-start').value || null, 
+                resign_date: document.getElementById('e-resign').value || null, 
+                gender: document.getElementById('e-prefix').value === 'นาย' ? 'M' : 'F', 
+                type: type, 
+                address: document.getElementById('e-address').value.trim() 
             }; 
             
             if (!d.id || d.id.length !== 13) return Swal.fire('ข้อมูลไม่ถูกต้อง', 'กรุณาระบุเลขประจำตัวประชาชน 13 หลัก', 'warning');
@@ -1182,7 +1195,7 @@
             if (d.salary < 0) return Swal.fire('ข้อมูลไม่ถูกต้อง', 'เงินเดือนไม่สามารถติดลบได้', 'warning');
 
             try {
-                if (!supabaseClient) throw new Error("ไม่สามารถเชื่อมต่อ Supabase ได้");
+                Swal.fire({ title: 'กำลังบันทึก...', didOpen: () => Swal.showLoading() });
                 const { error } = await supabaseClient.from('employees').upsert(d);
                 if (error) throw error;
                 
@@ -1193,10 +1206,10 @@
                 Swal.fire('บันทึกสำเร็จ', '', 'success'); 
                 renderDailyEmpList();
             } catch (error) {
-                Swal.fire('เกิดข้อผิดพลาด', error.message, 'error');
+                console.error("Supabase Error:", error);
+                Swal.fire('เกิดข้อผิดพลาด', error.message || "ไม่สามารถบันทึกข้อมูลได้", 'error');
             }
         }
-
         window.viewEmp = function(id) { const e = appState.employees.find(x => x.id == id); if(!e) return; Swal.fire({ title: 'ข้อมูลพนักงาน', html: `<div class="text-left text-sm space-y-3 p-2"><div class="flex items-center gap-4 bg-slate-50 p-3 rounded-xl border border-slate-200"><div class="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xl">${e.fname.charAt(0)}</div><div><div class="font-bold text-lg text-slate-800">${e.prefix} ${e.fname} ${e.lname}</div><div class="text-slate-500 text-xs">${e.pos} (${e.type === 'Contractor' ? 'รับเหมา' : 'ประจำ'})</div></div></div><div class="grid grid-cols-2 gap-2"><div class="text-slate-500 text-xs">รหัส/ID</div><div class="font-mono font-bold">${e.id}</div></div><div class="grid grid-cols-2 gap-2"><div class="text-slate-500 text-xs">เริ่มงาน</div><div>${e.start_date || '-'}</div></div><div class="grid grid-cols-2 gap-2"><div class="text-slate-500 text-xs">เงินเดือนฐาน</div><div class="font-bold text-green-600">${e.salary.toLocaleString()} บาท</div></div><div><div class="text-slate-500 text-xs mb-1">ที่อยู่</div><div class="bg-slate-50 p-2 rounded text-slate-700 border border-slate-100">${e.address || '-'}</div></div><div><div class="text-slate-500 text-xs mb-1">เลขที่บัญชี</div><div class="font-mono bg-blue-50 text-blue-800 p-2 rounded border border-blue-100">${e.bank || '-'}</div></div><div class="text-xs text-right text-slate-400 pt-2 border-t">สถานะ: ${e.status}</div></div>`, showCloseButton: true, showConfirmButton: false }); }
         
         window.delEmp = async function(id) { 
